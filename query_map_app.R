@@ -54,15 +54,28 @@ if (nrow(time_check) == 0) {
   time_filter<-t1
 }
 
+# let's filter on a range PICK UP HERE
+start <- ymd_hms("2025-01-01 00:00:00", tz = "UTC")
+end   <- ymd_hms("2025-10-12 23:59:59", tz = "UTC")
+
+range_query <- stg4_24hr_texas_parq |>
+  filter (time >= start, time <= end) |>
+  group_by (grib_id) %>%
+  summarize(
+    sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
+  arrange(desc(sum_rain)) |>
+  collect()
+
+
 # This is where you query the parq files by time (not location yet)
 # carrying these commands around for whole state, could clip first
 d <- stg4_24hr_texas_parq |>
-    filter (time %in% c(time_filter)) |>
-    group_by (grib_id) %>%
-    summarize(
-      sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
-    arrange(desc(sum_rain)) |>
-    collect()
+  filter (time %in% c(time_filter)) |>
+  group_by (grib_id) %>%
+  summarize(
+    sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
+  arrange(desc(sum_rain)) |>
+  collect()
 
 # Make local time labels for main title after you've queried which days (yesterday or today) are available.
 end_time_local <- with_tz(time_filter, "America/Chicago")
@@ -213,26 +226,26 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   output$rain_map <- renderPlot({
-                            plot_bin_map(title = 'Edwards Aquifer Recharge Zone',
-                            subtitle = paste("Precipitation from", format(begin_time_local, "%Y-%m-%d %H:%M %Z"), "to",format(end_time_local, "%Y-%m-%d %H:%M %Z")),
-                            note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")) ,
-                            font = "",
-                            map_rain = map_rain,
-                            map_streams = streams,
-                            map_lakes = lakes,
-                            #pal_water='#697984',
-                            pal_water = '#2C6690',
-                            pal_title='black',
-                            # pal_legend = 'YlOrRd',
-                            bin_alpha = 0.9,
-                            pal_subtitle='black',
-                            pal_outline="#697984",
-                            pal_bin_outline=NA,
-                            #pal_bin_outline='white',
-                            pal_legend_text='black',
-                            map_type='cartolight'
-                            )}, res = 144) 
-                           # map_type='cartolight')}, res = 144)  osm, opencycle, hotstyle, loviniahike, loviniacycle, stamenbw, stamenwatercolor, osmtransport, thunderforestlandscape,thunderforestoutdoors
+    plot_bin_map(title = 'Edwards Aquifer Recharge Zone',
+                 subtitle = paste("Precipitation from", format(begin_time_local, "%Y-%m-%d %H:%M %Z"), "to",format(end_time_local, "%Y-%m-%d %H:%M %Z")),
+                 note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")) ,
+                 font = "",
+                 map_rain = map_rain,
+                 map_streams = streams,
+                 map_lakes = lakes,
+                 #pal_water='#697984',
+                 pal_water = '#2C6690',
+                 pal_title='black',
+                 # pal_legend = 'YlOrRd',
+                 bin_alpha = 0.9,
+                 pal_subtitle='black',
+                 pal_outline="#697984",
+                 pal_bin_outline=NA,
+                 #pal_bin_outline='white',
+                 pal_legend_text='black',
+                 map_type='cartolight'
+    )}, res = 144) 
+  # map_type='cartolight')}, res = 144)  osm, opencycle, hotstyle, loviniahike, loviniacycle, stamenbw, stamenwatercolor, osmtransport, thunderforestlandscape,thunderforestoutdoors
 }
 
 shinyApp(ui, server)
