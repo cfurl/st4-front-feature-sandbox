@@ -2,3 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
+.Rproj
+*.Rproj
+st4_front_experimental.Rproj
+.Renviron
+/rosm.cache/*
