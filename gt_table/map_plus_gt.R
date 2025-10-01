@@ -213,7 +213,7 @@ table_img <- image_read("./gt_table/edwards_basin_table.png")
 
 # scale table to ~40% of map width; place at NE with a small inset
 map_w   <- image_info(map_img)$width
-table_img <- image_resize(table_img, paste0(as.integer(map_w * 0.50))) #.4
-final <- image_composite(map_img, table_img, gravity = "northeast", offset = "+100+150") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
+table_img <- image_resize(table_img, paste0(as.integer(map_w * 0.45))) #.4
+final <- image_composite(map_img, table_img, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
 image_write(final, "output/edwards_map_with_table.png")
