@@ -1,0 +1,5 @@
+docker image build --tag make_map .
+
+
+docker container run -v //c/stg4/front/st4-front-feature-sandbox/gt_table/docker_data:/home/data make_map
+

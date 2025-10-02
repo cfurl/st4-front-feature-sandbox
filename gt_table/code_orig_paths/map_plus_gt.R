@@ -9,10 +9,9 @@ library("sf")
 library("ggspatial")
 library("ggplot2")
 library("prettymapr")
-library("shiny")
 library("cowplot")
 library("magick")
-#library("ggiraph")
+library("webshot2")
 
 ######################## Some S3 things #####################
 # remove this from container setup, this gives your local dev the AWS access
@@ -70,10 +69,10 @@ end_time_local <- with_tz(time_filter, "America/Chicago")
 begin_time_local <- end_time_local - days(1)
 
 # call the gis layers you want mapped
-gs_basins<-read_sf("./gis/usgs_basins.shp")
-map <- sf::read_sf("./gis/usgs_dissolved.shp") # this is your hrap polygon
-streams <- read_sf("./gis/streams_recharge.shp")
-lakes <- read_sf("./gis/reservoirs.shp")
+gs_basins<-read_sf("./gt_table/gis/usgs_basins.shp")
+map <- sf::read_sf("./gt_table/gis/usgs_dissolved.shp") # this is your hrap polygon
+streams <- read_sf("./gt_table/gis/streams_recharge.shp")
+lakes <- read_sf("./gt_table/gis/reservoirs.shp")
 
 # this is where you subset the statewide set of bins by your shapefile area of interest
 map_rain <- map|>
@@ -137,10 +136,22 @@ plot_bin_map<-function(
     mutate(fill_val = ifelse(sum_rain_in == 0, NA_real_, sum_rain_in))
   
   plot<-ggplot()+
+    
+   # annotation_map_tile(
+  #    type = map_type,  # Use the "Carto Light" basemap
+  #    zoom = 9  # Adjust zoom level as needed
+   # )+
+    
     annotation_map_tile(
-      type = map_type,  # Use the "Carto Light" basemap
-      zoom = 9  # Adjust zoom level as needed
-    )+
+      type = map_type,        # same provider you cached
+      zoom = 9,                   # same zoom you pre-fetched
+      cachedir = "./gt_table/rosm.cache/cartolight",  # <-- path you COPY into the image
+      forcedownload = FALSE,      # use cache; don’t fetch
+      progress = "none",
+      alpha = 1
+    ) +
+    
+    
     
     annotate(geom="text",x= title_pos$X,y=title_pos$Y,label=title,size=7.75,hjust=0, color = pal_title, family=font, fontface='bold')+
     annotate(geom="text",x= subtitle_pos$X,y=subtitle_pos$Y,label=subtitle,size=3.5,hjust=0, color = pal_subtitle, family=font)+
@@ -205,15 +216,15 @@ p <- plot_bin_map(
 ##### this one maps well
 library(magick)
 
-base_map <- "output/edwards_map_base.png"
+base_map <- "gt_table/output/edwards_map_base.png"
 ggsave(base_map, p, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
 map_img   <- image_read(base_map)
-table_img <- image_read("./gt_table/edwards_basin_table.png")
+table_img <- image_read("./gt_table/output/edwards_basin_table.png")
 
 # scale table to ~40% of map width; place at NE with a small inset
 map_w   <- image_info(map_img)$width
 table_img <- image_resize(table_img, paste0(as.integer(map_w * 0.45))) #.4
 final <- image_composite(map_img, table_img, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
-image_write(final, "output/edwards_map_with_table.png")
+image_write(final, "gt_table/output/edwards_map_with_table.png")
