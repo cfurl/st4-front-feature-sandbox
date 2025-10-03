@@ -1,3 +1,13 @@
+# This script takes reads radar data from your .parquet/S3 and then writes
+# a .csv with: basin,date,daily_basin_avg_in,daily_max_bin_in
+# presently, i have it to filter on year.  All i have in .parquet/s3 at 
+# this point is 2025.  The resulting sheet for a whole year is 
+# 10 basins x 365 days = 3650 rows.  You will use this to create basin hyetographs
+# and to create the 24-hr basin total tables on your map.  A similar version
+# of this script will update daily with .github actions. This script is just
+# to populate the historical record.
+
+# load packages
 library("aws.s3")
 library("arrow")
 library("dplyr")
@@ -6,9 +16,12 @@ library("tidyr")
 library("readr")
 library("stringr")
 library("sf")
+library("fs")
 
+# keep out of github and docker containers
 readRenviron(".Renviron") 
 
+# some AWS checks
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
 missing  <- required[Sys.getenv(required) == ""]
 if (length(missing)) {
@@ -21,53 +34,73 @@ bucket <- s3_bucket("stg4-texas-24hr")
 s3_path <- bucket$path("")
 stg4_24hr_texas_parq <- open_dataset(s3_path)
 
+# A function to write csv headers only once at top of csv
+write_csv_append <- function(df, path) {
+    if (!file_exists(path)) {
+    write_csv(df, path, append = FALSE, col_names = TRUE)   # first time: header
+  } else {
+    write_csv(df, path, append = TRUE,  col_names = FALSE)  # later: no header
+  }
+}
+
+# collect your .parq/s3 for a given year, rewrite time column. 
 daily_rain <- stg4_24hr_texas_parq |>
   filter (year == 2025) |>
-  group_by (grib_id) %>%
-  arrange(desc(rain_mm)) |>
-  collect()
+  collect() |>
+  mutate(time = as.POSIXct(time, tz="UTC"))
+
+# using base R order date from oldest to newest, drop hms - using as.Date. This
+# solved my loop problem. was having trouble with timestamp. date works fine.
+daily_rain_loop <- unique(as.Date(daily_rain$time))[order(unique(as.Date(daily_rain$time)))]  #base R
 
 
-#aoi <- list.files ("./gis/hrap", pattern = "\\.shp$")
-# this is your outer loop
-#for (a in aoi) {
+# list your shapefiles with trimmed bins
+aoi <- list.files ("./gis/hrap", pattern = "\\.shp$")
 
-# now let's grab a geographical area so we can subset
-a = "usgs_dissolved.shp"
+# this is your OUTER LOOP
+for (a in aoi) {
+
+# drop the .shp for your table you write  
+basin <- str_replace(basename(a), "\\.[sS][hH][pP]$", "")  # case-insensitive
 
 map <- read_sf(paste0("./gis/hrap/",a)) |>
   st_drop_geometry()
 
-basin_area <- sum(map$bin_area) # basin area in m
+basin_area <- sum(map$bin_area) # basin area in m2
 
-# initilalize tibble
+# subset your daily rain by your aoi before you enter the time loop. Big saver.
+subset <- left_join(map,daily_rain, by = c("grib_id","hrap_x","hrap_y")) # subset geography before time filter
+
+
+# initilalize empty tibble
 basin_avgs_2025_ytd <- tibble(
   basin           = character(),                 # chr
-  dttm            = ymd_hms(character(), tz = "UTC"),  # dttm (POSIXct, UTC)
+  date              = as.Date(character()),
   daily_basin_avg_in = numeric(),                   # dbl
   daily_max_bin_in   = numeric()                    # dbl
 )
 
-# inner loop
-for (d in unique(daily_rain$time)){
 
+# INNER LOOP
+for (d in daily_rain_loop){
 
-map_math <- left_join(map,daily_rain, by = c("grib_id","hrap_x","hrap_y"))|> #this keeps all grib_id's in map
+  daily_rain_filter <- subset |>
+  filter (as.Date(time) == as.Date(d)) |>
   arrange(desc(rain_mm))|>
   mutate(cubic_m_precip = bin_area * rain_mm * .001) # this give you cubic m of precip for each radar bin
 
-basin_rain_cubic_meter <- sum(map_math$cubic_m_precip) 
+basin_rain_cubic_meter <- sum(daily_rain_filter$cubic_m_precip) 
 basin_rain_meter <- basin_rain_cubic_meter/ basin_area
 basin_rain_inch <- basin_rain_meter * 39.37
-basin_max_bin <- map_math$rain_mm[1]
+basin_max_bin <- daily_rain_filter$rain_mm[1]
 
-daily_update <- bind_cols (a, map_math$time[1], basin_rain_inch, basin_max_bin)
+daily_update <- tibble(
+  basin           = basin,                                   # chr vec
+  date              = as.Date(d),
+  daily_basin_avg_in = basin_rain_inch,                     # dbl vec
+  daily_max_bin_in   = basin_max_bin                        # dbl vec
+)
 
-basin_avgs_2025_ytd <- bind_rows (basin_avgs_2025_ytd, daily_update)
-
+write_csv_append(daily_update, "./daily_basin_avg_update/basin_avgs_2025_ytd.csv")
 }
-
-#}
-
-write_csv(basin_avgs_2025_ytd,"./daily_basin_avg_update/basin_avgs_2025_ytd.csv")
-
+}
