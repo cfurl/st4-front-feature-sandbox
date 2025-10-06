@@ -30,9 +30,9 @@ if (length(missing)) {
 
 # make sure you can connect to your bucket and open SubTreeFileSystem and identify path
 # then connect to the .parq files on the s3 storage
-bucket <- s3_bucket("stg4-texas-24hr")
-s3_path <- bucket$path("")
-stg4_24hr_texas_parq <- open_dataset(s3_path)
+bucket_radar <- s3_bucket("stg4-texas-24hr")
+s3_path_radar <- bucket_radar$path("")
+stg4_24hr_texas_parq <- open_dataset(s3_path_radar)
 
 # A function to write csv headers only once at top of csv
 write_csv_append <- function(df, path) {
@@ -76,6 +76,7 @@ subset <- left_join(map,daily_rain, by = c("grib_id","hrap_x","hrap_y")) # subse
 basin_avgs_2025_ytd <- tibble(
   basin           = character(),                 # chr
   date              = as.Date(character()),
+  year = integer(),
   daily_basin_avg_in = numeric(),                   # dbl
   daily_max_bin_in   = numeric()                    # dbl
 )
@@ -97,6 +98,7 @@ basin_max_bin <- daily_rain_filter$rain_mm[1]
 daily_update <- tibble(
   basin           = basin,                                   # chr vec
   date              = as.Date(d),
+  year  = year(date),
   daily_basin_avg_in = basin_rain_inch,                     # dbl vec
   daily_max_bin_in   = basin_max_bin                        # dbl vec
 )
