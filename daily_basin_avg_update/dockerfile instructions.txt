@@ -1,0 +1,59 @@
+docker image build --tag daily_stat_update .
+
+
+docker container run daily_stat_update
+
+
+# 4. put in on the registry
+
+docker login --username cfurl
+docker image tag daily_stat_update cfurl/stg4_24hr_daily_stat_update:v1
+docker image push cfurl/stg4_24hr_daily_stat_update:v1
+# you should now be able to see it online: https://hub.docker.com/r/cfurl/
+
+
+# update main .yml stg4-texas-24hr-backend-actions/docker-compose.yml
+services:
+  
+  scraper:
+    image: cfurl/stg4_24hr_scraper:v1
+    container_name: scrape24
+    #networks:
+     # - some_name
+    volumes:
+      - st4_data:/home/data
+
+  wgrib2:
+    image: cfurl/sondngyn_wgrib2:v1
+    container_name: wgrib2
+    command: "wgrib2_commands.sh"
+    depends_on:
+      scraper:
+        condition: service_completed_successfully
+    volumes: 
+      - st4_data:/srv/
+      - st4_data:/opt/    
+      
+  parqs3:
+    image: cfurl/stg4_24hr_parq_s3:v1
+    container_name: parqs3
+    depends_on:
+      wgrib2:
+        condition: service_completed_successfully
+    volumes:
+      - st4_data:/home/data
+    env_file:
+      - .env
+      
+  dailystat:
+    image: cfurl/stg4_24hr_daily_stat_update:v1
+    container_name: dailystat
+    depends_on:
+      parqs3:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+
+        
+volumes:
+  st4_data:

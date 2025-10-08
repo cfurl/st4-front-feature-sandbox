@@ -33,11 +33,10 @@ library("lubridate")
 library("tidyr")
 library("readr")
 library("stringr")
-library("sf")
 library("fs")
 
 # keep out of github and docker containers
-readRenviron(".Renviron") 
+#readRenviron(".Renviron") 
 
 # some AWS checks
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
@@ -133,7 +132,7 @@ for (a in aoi) {
  daily_edwards_stats|>
    group_by(year)|>
    write_dataset(
-     path    = stats_prefix,   # <-- guarantees it goes to stg4-edwards-daily-stats-24hr
+     path    = s3_path_stats,   # <-- guarantees it goes to stg4-edwards-daily-stats-24hr
      format  = "parquet"
    )
  
