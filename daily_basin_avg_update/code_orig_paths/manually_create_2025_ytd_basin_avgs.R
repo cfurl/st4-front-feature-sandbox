@@ -55,7 +55,7 @@ daily_rain_loop <- unique(as.Date(daily_rain$time))[order(unique(as.Date(daily_r
 
 
 # list your shapefiles with trimmed bins
-aoi <- list.files ("./gis/hrap", pattern = "\\.shp$")
+aoi <- list.files ("./daily_basin_avg_update/gis", pattern = "\\.shp$")
 
 # this is your OUTER LOOP
 for (a in aoi) {
@@ -63,7 +63,7 @@ for (a in aoi) {
 # drop the .shp for your table you write  
 basin <- str_replace(basename(a), "\\.[sS][hH][pP]$", "")  # case-insensitive
 
-map <- read_sf(paste0("./gis/hrap/",a)) |>
+map <- read_sf(paste0("./daily_basin_avg_update/gis/",a)) |>
   st_drop_geometry()
 
 basin_area <- sum(map$bin_area) # basin area in m2
@@ -103,6 +103,6 @@ daily_update <- tibble(
   daily_max_bin_in   = basin_max_bin                        # dbl vec
 )
 
-write_csv_append(daily_update, "./daily_basin_avg_update/basin_avgs_2025_ytd.csv")
+write_csv_append(daily_update, "./daily_basin_avg_update/output/basin_avgs_2025_ytd.csv")
 }
 }

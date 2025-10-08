@@ -65,7 +65,7 @@ daily_rain_update <- stg4_24hr_texas_parq |>
   mutate(time = as.POSIXct(time, tz="UTC"))
 
 
-aoi <- list.files ("./gis/hrap", pattern = "\\.shp$")
+aoi <- list.files ("./daily_basin_avg_update/gis", pattern = "\\.shp$")
 
 # initilalize empty tibble
   daily_update <- tibble(
@@ -84,7 +84,7 @@ for (a in aoi) {
   # drop the .shp for your table you write  
   basin <- str_replace(basename(a), "\\.[sS][hH][pP]$", "")  # case-insensitive
   
-  map <- read_sf(paste0("./gis/hrap/",a)) |>
+  map <- read_sf(paste0("./daily_basin_avg_update/gis/",a)) |>
     st_drop_geometry()
   
   basin_area <- sum(map$bin_area) # basin area in m2
@@ -115,6 +115,8 @@ for (a in aoi) {
  
 }
 
+  
+  
   bucket_stats <- s3_bucket("stg4-edwards-daily-stats-24hr")
   s3_path_stats <- bucket_stats$path("")
   stg4_edwards_daily_stats_24hr <- open_dataset(s3_path_stats)
