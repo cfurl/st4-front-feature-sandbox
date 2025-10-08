@@ -11,4 +11,6 @@ COPY code/.Renviron /home
 COPY code/install_packages.R /home/code/install_packages.R
 COPY code/daily_basin_avg_update.R /home/code/daily_basin_avg_update.R
 
+RUN Rscript /home/code/install_packages.R
+
 CMD ["Rscript", "/home/code/daily_basin_avg_update.R"]

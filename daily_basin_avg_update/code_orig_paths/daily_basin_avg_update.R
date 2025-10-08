@@ -33,7 +33,7 @@ library("lubridate")
 library("tidyr")
 library("readr")
 library("stringr")
-library("sf")
+#library("sf")
 library("fs")
 
 # keep out of github and docker containers
@@ -65,7 +65,7 @@ daily_rain_update <- stg4_24hr_texas_parq |>
   mutate(time = as.POSIXct(time, tz="UTC"))
 
 
-aoi <- list.files ("./daily_basin_avg_update/gis", pattern = "\\.shp$")
+aoi <- list.files ("./daily_basin_avg_update/gis", pattern = "\\.csv$")
 
 # initilalize empty tibble
   daily_update <- tibble(
@@ -82,10 +82,10 @@ for (a in aoi) {
   
  #a="Bexar.shp"
   # drop the .shp for your table you write  
-  basin <- str_replace(basename(a), "\\.[sS][hH][pP]$", "")  # case-insensitive
+  basin <- str_replace(basename(a), "\\.[cC][sS][vV]$", "")  # case-insensitive
   
-  map <- read_sf(paste0("./daily_basin_avg_update/gis/",a)) |>
-    st_drop_geometry()
+  map <- read_csv(paste0("./daily_basin_avg_update/gis/",a)) #|>
+    #st_drop_geometry()
   
   basin_area <- sum(map$bin_area) # basin area in m2
   
