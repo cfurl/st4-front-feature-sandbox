@@ -52,7 +52,7 @@ s3_path_radar <- bucket_radar$path("")
 stg4_24hr_texas_parq <- open_dataset(s3_path_radar)
 
 d <- stg4_24hr_texas_parq |>
-  filter (day == 8) |>
+  filter (month == 10, day == 8) |>
   collect()
 
 
