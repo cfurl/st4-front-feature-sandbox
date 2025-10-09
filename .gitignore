@@ -7,3 +7,4 @@
 st4_front_experimental.Rproj
 .Renviron
 /rosm.cache/*
+/gt_table/output/*

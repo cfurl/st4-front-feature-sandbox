@@ -1,8 +1,4 @@
-# now working on opaqueness
 
-################################################################ this is the rework like the size and place
-
-# ---- 2x10 gt table with uniform transparency (header + labels + body) ----
 # Packages
 library(gt)
 library(dplyr)
@@ -112,6 +108,10 @@ existing_cols <- setdiff(names(tbl_basin_24hr), "Metric")
 order_final <- c(desired_order, setdiff(existing_cols, desired_order))
 tbl_basin_24hr <- tbl_basin_24hr %>% select(Metric, all_of(order_final))
 
+tbl_basin_cum <- bind_rows(cum_row) %>%
+  relocate(Metric)
+
+tbl_basin_cum <- tbl_basin_cum %>% select(Metric, all_of(order_final))
 
 # ---- Column width controls ----
 stub_width  <- px(35)
@@ -158,30 +158,27 @@ gt_basin_24hr <-
     )
   )
 
-
-
-
 # ---- Save -> trim -> make CHROMA transparent -> write final ----
 out_dir   <- "gt_table/output"
-tmp_png   <- file.path(out_dir, "edwards_basin_table_tmp.png")
-final_png <- file.path(out_dir, "edwards_basin_table.png")
+tmp_png_24   <- file.path(out_dir, "edwards_basin_table_tmp_24.png")
+final_png_24 <- file.path(out_dir, "edwards_basin_table_24.png")
 #if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-gtsave(gt_basin_24hr, filename = tmp_png)
+gtsave(gt_basin_24hr, filename = tmp_png_24)
 
 # read & trim
-img <- image_read(tmp_png) |> image_trim()
+img_24 <- image_read(tmp_png_24) |> image_trim()
 
 # 1) Remove the CHROMA background so only text/lines remain
-img_fg <- image_transparent(img, color = CHROMA, fuzz = 0)
+img_fg_24 <- image_transparent(img_24, color = CHROMA, fuzz = 0)
 
 # 2) Build a semi-transparent "card" the same size as the trimmed table
 #    Adjust the hex alpha to taste: 33≈20%, 66≈40%, 80≈50%, CC≈80%, etc.
 card_opacity_hex <- "80"  # ~50% opacity
 card_color <- paste0("#FFFFFF", card_opacity_hex)  # translucent white
-card <- image_blank(
-  width  = image_info(img_fg)$width,
-  height = image_info(img_fg)$height,
+card_24 <- image_blank(
+  width  = image_info(img_fg_24)$width,
+  height = image_info(img_fg_24)$height,
   color  = card_color
 )
 
@@ -189,13 +186,82 @@ card <- image_blank(
 # card <- image_shadow(card, color = "black", opacity = 25, sigma = 6, x = 0, y = 2)
 
 # 3) Composite foreground text/lines over the translucent card
-img_final <- image_composite(card, img_fg, operator = "over")
+img_final_24 <- image_composite(card_24, img_fg_24, operator = "over")
 
 # write final PNG with baked-in semi-transparency
-image_write(img_final, path = final_png, format = "png")
+image_write(img_final_24, path = final_png_24, format = "png")
 
 
 
+
+
+gt_basin_cum <-
+  tbl_basin_cum |>
+  gt(rowname_col = "Metric") |>
+  cols_align(align = "right", columns = all_of(basin_cols)) |>
+  cols_width(stub() ~ stub_width, all_of(basin_cols) ~ basin_width) |>
+  tab_header(title = md("**YTD Rainfall Summary (in)**")) |>
+  tab_style(
+    style = cell_text(size = px(17), weight = "bold"),
+    locations = list(
+      cells_title(groups = c("title", "subtitle")),
+      cells_column_labels(columns = everything()),
+      cells_stub(rows = everything()),
+      cells_body(columns = everything())
+    )
+  ) |>
+  tab_options(
+    table.background.color         = CHROMA,
+    heading.background.color       = CHROMA,
+    column_labels.background.color = CHROMA,
+    row_group.background.color     = CHROMA,
+    table.font.size                = px(12),
+    data_row.padding               = px(2),
+    table.width                    = pct(100),
+    table.border.top.width         = px(0),
+    stub.border.style              = "none"
+  ) |>
+  tab_style(
+    style = cell_fill(color = CHROMA),
+    locations = list(
+      cells_body(columns = everything(), rows = everything()),
+      cells_stub(rows = everything())
+    )
+  )
+
+
+# ---- Save -> trim -> make CHROMA transparent -> write final ----
+out_dir   <- "gt_table/output"
+tmp_png_cum   <- file.path(out_dir, "edwards_basin_table_tmp_cum.png")
+final_png_cum <- file.path(out_dir, "edwards_basin_table_cum.png")
+#if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+gtsave(gt_basin_cum, filename = tmp_png_cum)
+
+# read & trim
+img_cum <- image_read(tmp_png_cum) |> image_trim()
+
+# 1) Remove the CHROMA background so only text/lines remain
+img_fg_cum <- image_transparent(img_cum, color = CHROMA, fuzz = 0)
+
+# 2) Build a semi-transparent "card" the same size as the trimmed table
+#    Adjust the hex alpha to taste: 33≈20%, 66≈40%, 80≈50%, CC≈80%, etc.
+#card_opacity_hex <- "80"  # ~50% opacity
+#card_color <- paste0("#FFFFFF", card_opacity_hex)  # translucent white
+card_cum <- image_blank(
+  width  = image_info(img_fg_cum)$width,
+  height = image_info(img_fg_cum)$height,
+  color  = card_color
+)
+
+# (Optional) add a soft shadow to the card for legibility
+# card <- image_shadow(card, color = "black", opacity = 25, sigma = 6, x = 0, y = 2)
+
+# 3) Composite foreground text/lines over the translucent card
+img_final_cum <- image_composite(card_cum, img_fg_cum, operator = "over")
+
+# write final PNG with baked-in semi-transparency
+image_write(img_final_cum, path = final_png_cum, format = "png")
 
 
 
