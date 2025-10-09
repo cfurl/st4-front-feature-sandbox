@@ -8,28 +8,110 @@ library(gt)
 library(dplyr)
 library(magick)
 library(webshot2)
+library(arrow)
+library(lubridate)
+library(tidyr)
 
-# ==== Basin names (9 sub-basins + whole area) ====
-basins <- c(
-  "Bexar","Blanco","Cibolo","Frio","Guad",
-  "Medina","Nueces","Sabinal","Hondo","Rchg Zn"
+readRenviron(".Renviron") # when it's in gitignore
+
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+missing  <- required[Sys.getenv(required) == ""]
+if (length(missing)) {
+  stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
+}
+
+
+# stats bucket read
+bucket_stats <- s3_bucket("stg4-edwards-daily-stats-24hr")
+s3_path_stats <- bucket_stats$path("")
+stg4_edwards_daily_stats_24hr <- open_dataset(s3_path_stats)
+
+
+
+current_utc_date <- as_date(with_tz(Sys.time(), "UTC"))
+
+current_year<-year(current_utc_date)
+current_month<-month(current_utc_date)
+current_day<-day(current_utc_date)
+
+# collect your .parq/s3 whole enchilada
+daily_edwards_stats <- stg4_edwards_daily_stats_24hr |>
+  collect()  |>
+  group_by(basin)|>
+  mutate(cumulative_precip_in = sum(daily_basin_avg_in)) |>
+  filter (date == as.Date(current_utc_date))|>
+    ungroup()
+
+# Formatting: "< 0.10" when >0 & <0.10; "" for NA; otherwise 2 decimals
+fmt_in <- function(x) {
+  ifelse(is.na(x), "",
+         ifelse(x > 0 & x < 0.10, "< 0.10", sprintf("%.2f", x)))
+}
+
+
+#working on new gt table.......
+
+# 3) Map old basin names -> display names you want on the GT table
+name_map <- c(
+  "Frio-Dry Frio"     = "Frio",
+  "Seco-Hondo"        = "Hondo",
+  "Cibolo-Dry Comal"  = "Cibolo",
+  "Guadalupe"         = "Guad",
+  "usgs_dissolved"    = "Rchg Zn",
+  "Nueces"            = "Nueces",
+  "Sabinal"           = "Sabinal",
+  "Medina"            = "Medina",
+  "Bexar"             = "Bexar",
+  "Blanco"            = "Blanco"
 )
 
-# ==== Dummy values (inches) ====
-basin_avg <- c(1.23, 0.98, 1.75, 2.10, 0.65, 0.05, 1.40, 1.88, 0.92, 1.31)
-max_bin   <- c(3.80, 2.45, 4.10, 5.25, 1.90, 2.75, 3.30, 4.85, 2.10, 3.95)
+# 4) Desired left->right column order (deduped);
 
-# ---- Pre-format: "< 0.10" when < 0.1; otherwise 2 decimals ----
-avg_fmt <- ifelse(is.na(basin_avg), "",
-                  ifelse(basin_avg < 0.1, "< 0.10", sprintf("%.2f", basin_avg)))
-max_fmt <- ifelse(is.na(max_bin), "",
-                  ifelse(max_bin < 0.1, "< 0.10", sprintf("%.2f", max_bin)))
+desired_order <- c(
+  "Nueces",
+  "Frio",
+  "Sabinal",
+  "Medina",
+  "Hondo",
+  "Bexar",
+  "Cibolo",
+  "Guad",
+  "Blanco",
+  "Rchg Zn"
+) |> unique()
 
-# ---- Build 2-row data frame ----
-tbl_basin_24hr <- tibble(Metric = c("Basin Avg", "Max Bin"))
-for (i in seq_along(basins)) {
-  tbl_basin_24hr[[ basins[i] ]] <- c(avg_fmt[i], max_fmt[i])
-}
+
+# 5) Build the two rows with renamed display columns
+wide_ready <- daily_edwards_stats %>%
+  mutate(
+    display = recode(basin, !!!name_map),
+    avg_fmt = fmt_in(daily_basin_avg_in),
+    max_fmt = fmt_in(daily_max_bin_in),
+    cum_fmt = fmt_in(cumulative_precip_in)
+  )
+
+avg_row <- wide_ready %>%
+  select(display, value = avg_fmt) %>%
+  mutate(Metric = "Basin Avg") %>%
+  pivot_wider(names_from = display, values_from = value)
+
+max_row <- wide_ready %>%
+  select(display, value = max_fmt) %>%
+  mutate(Metric = "Max Bin") %>%
+  pivot_wider(names_from = display, values_from = value)
+
+cum_row <- wide_ready %>%
+  select(display, value = cum_fmt) %>%
+  mutate(Metric = "Cumul Avg") %>%
+  pivot_wider(names_from = display, values_from = value)
+
+tbl_basin_24hr <- bind_rows(avg_row, max_row) %>%
+  relocate(Metric)
+
+existing_cols <- setdiff(names(tbl_basin_24hr), "Metric")
+order_final <- c(desired_order, setdiff(existing_cols, desired_order))
+tbl_basin_24hr <- tbl_basin_24hr %>% select(Metric, all_of(order_final))
+
 
 # ---- Column width controls ----
 stub_width  <- px(35)
@@ -38,14 +120,16 @@ basin_width <- px(30)
 # ---- Chroma key to remove later (use a color not used anywhere else) ----
 CHROMA <- "white"
 
-# ---- Create gt table: ALL TEXT BOLD; make header + labels + stub + body use CHROMA ----
+
+basin_cols <- intersect(desired_order, names(tbl_basin_24hr))
+
+
 gt_basin_24hr <-
   tbl_basin_24hr |>
   gt(rowname_col = "Metric") |>
-  cols_align(align = "right", columns = all_of(basins)) |>
-  cols_width(stub() ~ stub_width, all_of(basins) ~ basin_width) |>
+  cols_align(align = "right", columns = all_of(basin_cols)) |>
+  cols_width(stub() ~ stub_width, all_of(basin_cols) ~ basin_width) |>
   tab_header(title = md("**24-hr Rainfall Summary (in)**")) |>
-  # bold everything
   tab_style(
     style = cell_text(size = px(17), weight = "bold"),
     locations = list(
@@ -55,9 +139,8 @@ gt_basin_24hr <-
       cells_body(columns = everything())
     )
   ) |>
-  # fill all table regions with CHROMA so they become transparent later
   tab_options(
-    table.background.color         = CHROMA,  # outer area
+    table.background.color         = CHROMA,
     heading.background.color       = CHROMA,
     column_labels.background.color = CHROMA,
     row_group.background.color     = CHROMA,
@@ -67,7 +150,6 @@ gt_basin_24hr <-
     table.border.top.width         = px(0),
     stub.border.style              = "none"
   ) |>
-  # also ensure body cells + stub get CHROMA (so no opaque patches remain)
   tab_style(
     style = cell_fill(color = CHROMA),
     locations = list(
@@ -75,6 +157,9 @@ gt_basin_24hr <-
       cells_stub(rows = everything())
     )
   )
+
+
+
 
 # ---- Save -> trim -> make CHROMA transparent -> write final ----
 out_dir   <- "gt_table/output"
