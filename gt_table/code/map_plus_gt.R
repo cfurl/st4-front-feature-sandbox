@@ -15,7 +15,7 @@ library("webshot2")
 
 ######################## Some S3 things #####################
 # remove this from container setup, this gives your local dev the AWS access
-readRenviron("/home/.Renviron") # docker
+#readRenviron("/home/.Renviron") # docker
 
 #required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
