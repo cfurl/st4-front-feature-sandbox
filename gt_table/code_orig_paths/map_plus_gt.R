@@ -259,7 +259,22 @@ map_w_24   <- image_info(map_img_24)$width
 table_img_24 <- image_resize(table_img_24, paste0(as.integer(map_w * 0.45))) #.4
 final_24 <- image_composite(map_img_24, table_img_24, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
-image_write(final_24, "gt_table/output/edwards_map_with_table_24.png")
+image_write(final_24, paste0("gt_table/output/contrib_zone_w_table_24h_",as.Date(time_filter),".png"))
+
+# local file that image_write() just created
+local_png_24h <- sprintf("gt_table/output/contrib_zone_w_table_24h_%s.png", as.Date(time_filter))
+# choose an S3 key (prefix/folder optional)
+s3_key_24h <- file.path("24h", basename(local_png_24h))  # e.g., maps/contrib_zone_w_table_ytd_2025-10-08.png
+
+ok_24h <- put_object(
+  file   = local_png_24h,
+  object = s3_key_24h,
+  bucket = "stg4-edwards-daily-maps",
+  headers = list(`Content-Type` = "image/png"),
+  multipart = TRUE
+)
+
+if (!isTRUE(ok_24h)) stop("Upload failed: ", local_png_24h)
 
 
 pcum <- plot_bin_map(
@@ -288,4 +303,26 @@ map_w_cum   <- image_info(map_img_cum)$width
 table_img_cum <- image_resize(table_img_cum, paste0(as.integer(map_w * 0.45))) #.4
 final_cum <- image_composite(map_img_cum, table_img_cum, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
-image_write(final_cum, "gt_table/output/edwards_map_with_table_cum.png")
+image_write(final_cum, paste0("gt_table/output/contrib_zone_w_table_ytd_",as.Date(time_filter),".png"))
+
+
+# radar bucket read
+#bucket_maps <- s3_bucket("stg4-edwards-daily-maps")
+#s3_path_maps <- bucket_maps$path("")
+
+# local file that image_write() just created
+local_png_ytd <- sprintf("gt_table/output/contrib_zone_w_table_ytd_%s.png", as.Date(time_filter))
+# choose an S3 key (prefix/folder optional)
+s3_key_ytd <- file.path("ytd", basename(local_png_ytd))  # e.g., maps/contrib_zone_w_table_ytd_2025-10-08.png
+
+ok_ytd <- put_object(
+  file   = local_png_ytd,
+  object = s3_key_ytd,
+  bucket = "stg4-edwards-daily-maps",
+  headers = list(`Content-Type` = "image/png"),
+  multipart = TRUE
+)
+
+if (!isTRUE(ok_ytd)) stop("Upload failed: ", local_png_ytd)
+
+
