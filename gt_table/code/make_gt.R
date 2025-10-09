@@ -36,7 +36,8 @@ daily_edwards_stats <- stg4_edwards_daily_stats_24hr |>
   group_by(basin)|>
   mutate(cumulative_precip_in = sum(daily_basin_avg_in)) |>
   filter (date == as.Date(current_utc_date))|>
-    ungroup()
+    ungroup()|>
+    distinct()
 
 # Formatting: "< 0.10" when >0 & <0.10; "" for NA; otherwise 2 decimals
 fmt_in <- function(x) {

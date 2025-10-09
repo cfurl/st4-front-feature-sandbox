@@ -44,7 +44,8 @@ stg4_edwards_daily_stats_24hr <- open_dataset(s3_path_stats)
 
 # collect your .parq/s3 
 daily_edwards_stats <- stg4_edwards_daily_stats_24hr |>
-  collect() 
+  collect() |>
+  distinct()
 
 # radar bucket read
 bucket_radar <- s3_bucket("stg4-texas-24hr")

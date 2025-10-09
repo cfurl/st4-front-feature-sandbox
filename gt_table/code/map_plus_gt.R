@@ -264,6 +264,8 @@ image_write(final_24, paste0("/home/data/contrib_zone_w_table_24h_",as.Date(time
 
 # local file that image_write() just created
 local_png_24h <- sprintf("/home/data/contrib_zone_w_table_24h_%s.png", as.Date(time_filter))
+
+region <- Sys.getenv("AWS_REGION", "us-east-2")
 # choose an S3 key (prefix/folder optional)
 s3_key_24h <- file.path("24h", basename(local_png_24h))  # e.g., maps/contrib_zone_w_table_ytd_2025-10-08.png
 
@@ -271,6 +273,7 @@ ok_24h <- put_object(
   file   = local_png_24h,
   object = s3_key_24h,
   bucket = "stg4-edwards-daily-maps",
+  region   = region,
   headers = list(`Content-Type` = "image/png"),
   multipart = TRUE
 )
@@ -314,6 +317,7 @@ ok_ytd <- put_object(
   file   = local_png_ytd,
   object = s3_key_ytd,
   bucket = "stg4-edwards-daily-maps",
+  region   = region,
   headers = list(`Content-Type` = "image/png"),
   multipart = TRUE
 )
