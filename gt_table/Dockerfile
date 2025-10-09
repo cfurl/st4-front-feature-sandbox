@@ -38,7 +38,7 @@ WORKDIR /home
 COPY rosm.cache/cartolight/ /home/rosm.cache/cartolight/  
 COPY gis/ /home/gis/ 
 
-COPY code/.Renviron /home
+#COPY code/.Renviron /home
 COPY code/install_packages.R /home/code/install_packages.R
 COPY code/make_gt.R /home/code/make_gt.R
 COPY code/map_plus_gt.R /home/code/map_plus_gt.R

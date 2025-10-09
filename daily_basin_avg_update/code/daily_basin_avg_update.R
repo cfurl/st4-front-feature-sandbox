@@ -101,7 +101,7 @@ for (a in aoi) {
     basin_rain_cubic_meter <- sum(daily_rain_filter$cubic_m_precip) 
     basin_rain_meter <- basin_rain_cubic_meter/ basin_area
     basin_rain_inch <- basin_rain_meter * 39.37
-    basin_max_bin <- daily_rain_filter$rain_mm[1]
+    basin_max_bin <- daily_rain_filter$rain_mm[1]*.03937
     
     daily_update <- rbind(daily_update, 
       

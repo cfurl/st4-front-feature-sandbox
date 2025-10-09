@@ -17,7 +17,8 @@ library("webshot2")
 # remove this from container setup, this gives your local dev the AWS access
 readRenviron("/home/.Renviron") # docker
 
-required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+#required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
 missing  <- required[Sys.getenv(required) == ""]
 if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
@@ -220,8 +221,8 @@ plot_bin_map<-function(
     theme_void()+
     theme(
       text = element_text(family=font),
-      legend.position = "inside",
-      legend.position.inside = c(0.70,0.1),  
+      #legend.position = "inside",
+      legend.position = c(0.70,0.1),  
       legend.direction = "horizontal", 
       legend.margin = margin(t = 0, r = 10, b = 0, l = 10),
       legend.title = element_text(size = 10, face='bold', color=pal_legend_text), 
@@ -256,7 +257,7 @@ table_img_24 <- image_read("/home/data/edwards_basin_table_24.png")
 
 # scale table to ~40% of map width; place at NE with a small inset
 map_w_24   <- image_info(map_img_24)$width
-table_img_24 <- image_resize(table_img_24, paste0(as.integer(map_w * 0.45))) #.4
+table_img_24 <- image_resize(table_img_24, paste0(as.integer(map_w_24 * 0.45))) #.4
 final_24 <- image_composite(map_img_24, table_img_24, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
 image_write(final_24, paste0("/home/data/contrib_zone_w_table_24h_",as.Date(time_filter),".png"))
@@ -300,7 +301,7 @@ table_img_cum <- image_read("/home/data/edwards_basin_table_cum.png")
 
 # scale table to ~40% of map width; place at NE with a small inset
 map_w_cum   <- image_info(map_img_cum)$width
-table_img_cum <- image_resize(table_img_cum, paste0(as.integer(map_w * 0.45))) #.4
+table_img_cum <- image_resize(table_img_cum, paste0(as.integer(map_w_cum * 0.45))) #.4
 final_cum <- image_composite(map_img_cum, table_img_cum, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
 image_write(final_cum, paste0("/home/data/contrib_zone_w_table_ytd_",as.Date(time_filter),".png"))
