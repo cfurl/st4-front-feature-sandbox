@@ -8,9 +8,9 @@ library(arrow)
 library(lubridate)
 library(tidyr)
 
-readRenviron("/home/.Renviron") # docker
+#readRenviron("/home/.Renviron") # docker
 
-required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
 missing  <- required[Sys.getenv(required) == ""]
 if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
