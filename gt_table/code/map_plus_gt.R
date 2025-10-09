@@ -15,9 +15,7 @@ library("webshot2")
 
 ######################## Some S3 things #####################
 # remove this from container setup, this gives your local dev the AWS access
-#readRenviron(".Renviron") # when it's in gitignore
 readRenviron("/home/.Renviron") # docker
-
 
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
 missing  <- required[Sys.getenv(required) == ""]
@@ -25,14 +23,13 @@ if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
 }
 
-# make sure you can connect to your bucket and open SubTreeFileSystem and identify path
-# then connect to the .parq files on the s3 storage
-bucket <- s3_bucket("stg4-texas-24hr")
-s3_path <- bucket$path("")
-stg4_24hr_texas_parq <- open_dataset(s3_path)
+
+# radar bucket read
+bucket_radar <- s3_bucket("stg4-texas-24hr")
+s3_path_radar <- bucket_radar$path("")
+stg4_24hr_texas_parq <- open_dataset(s3_path_radar)
 
 ############################ time stamps #############
-
 current_utc_date_time <- with_tz(Sys.time(), "UTC")
 current_central_date_time <- with_tz(Sys.time(), "America/Chicago")
 current_utc_time <- format(with_tz(Sys.time(), "UTC"), "%H:%M:%S")
@@ -44,7 +41,6 @@ t2 <- as.POSIXct(paste(Sys.Date() - 1, "12:00:00"), tz = "UTC") # yesterday 1
 
 # This sequence is how you get the most recent data.  It today's data hasn't dropped yet
 # it will go query yesterday's data.
-
 time_check <- stg4_24hr_texas_parq |>
   select(time)|>
   filter (time %in% c(t1)) |>
@@ -58,8 +54,19 @@ if (nrow(time_check) == 0) {
 
 # This is where you query the parq files by time (not location yet)
 # carrying these commands around for whole state, could clip first
-d <- stg4_24hr_texas_parq |>
+# room for optimization here
+rain_24hr <- stg4_24hr_texas_parq |>
   filter (time %in% c(time_filter)) |>
+  group_by (grib_id) %>%
+  summarize(
+    sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
+  arrange(desc(sum_rain)) |>
+  collect()
+
+current_year <- year(time_filter)
+
+rain_cum <- stg4_24hr_texas_parq |>
+  filter (year == current_year) |>
   group_by (grib_id) %>%
   summarize(
     sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
@@ -70,12 +77,6 @@ d <- stg4_24hr_texas_parq |>
 end_time_local <- with_tz(time_filter, "America/Chicago")
 begin_time_local <- end_time_local - days(1)
 
-# call the gis layers you want mapped
-#gs_basins<-read_sf("./gt_table/gis/usgs_basins.shp")
-#map <- sf::read_sf("./gt_table/gis/usgs_dissolved.shp") # this is your hrap polygon
-#streams <- read_sf("./gt_table/gis/streams_recharge.shp")
-#lakes <- read_sf("./gt_table/gis/reservoirs.shp")
-
 # call the gis layers you want mapped DOCKER
 gs_basins<-read_sf("/home/gis/usgs_basins.shp")
 map <- sf::read_sf("/home/gis/usgs_dissolved.shp") # this is your hrap polygon
@@ -83,12 +84,28 @@ streams <- read_sf("/home/gis/streams_recharge.shp")
 lakes <- read_sf("/home/gis/reservoirs.shp")
 
 # this is where you subset the statewide set of bins by your shapefile area of interest
-map_rain <- map|>
-  left_join(d, by = "grib_id")|>
+map_rain_24hr <- map|>
+  left_join(rain_24hr, by = "grib_id")|>
   mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
   mutate(sum_rain_in = sum_rain/25.4)
 
+# --- Static legend settings (always show full range) ---
+rain_breaks_24  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
+rain_labels_24  <- c("0","0.1","0.25","0.5","1","2","3","4","6","8","10","12+")
+rain_limits_24  <- c(0, 12)
+
+map_rain_cum <- map|>
+  left_join(rain_cum, by = "grib_id")|>
+  mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
+  mutate(sum_rain_in = sum_rain/25.4)
+
+# --- Static legend settings (always show full range) ---
+rain_breaks_cum  <- c(14, 16, 18, 20, 23, 26, 29, 31, 33, 35, 37, 40)
+rain_labels_cum  <- c("14","16","18","20","23","26","29","31","33","35","37","40")
+rain_limits_cum  <- c(14, 40)
+
 # Mapping function edited from Tanya's work
+
 plot_bin_map<-function(
     title = 'Edwards Aquifer Recharge Zone',
     subtitle= NA,
@@ -104,7 +121,10 @@ plot_bin_map<-function(
     pal_bin_outline='black',
     pal_legend_text='white',
     bin_alpha = 0.7,
-    map_type='cartodark'
+    map_type='cartodark',
+    rain_breaks = rain_breaks_24,
+    rain_labels = rain_labels_24,
+    rain_limits = rain_limits_24
 ){
   
   bbox <- st_bbox(c(
@@ -135,9 +155,14 @@ plot_bin_map<-function(
     st_coordinates() |> as.data.frame()
   
   # --- Static legend settings (always show full range) ---
-  rain_breaks  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
-  rain_labels  <- c("0","0.1","0.25","0.5","1","2","3","4","6","8","10","12+")
-  rain_limits  <- c(0, 12)
+ # rain_breaks  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
+#  rain_labels  <- c("0","0.1","0.25","0.5","1","2","3","4","6","8","10","12+")
+ # rain_limits  <- c(0, 12)
+  
+  # --- Static legend settings (always show full range) ---
+  rain_breaks  <- rain_breaks
+  rain_labels  <- rain_labels
+  rain_limits  <- rain_limits
   
   # --- Set 0 rainfall to NA for transparency ---
   map_rain <- map_rain |>
@@ -154,7 +179,6 @@ plot_bin_map<-function(
       type = map_type,        # same provider you cached
       zoom = 9,                   # same zoom you pre-fetched
       cachedir = "/home/rosm.cache/cartolight",  # <-- path you COPY into the image
-     # cachedir = "./gt_table/rosm.cache/cartolight",  # <-- path you COPY into the image
       forcedownload = FALSE,      # use cache; don’t fetch
       progress = "none",
       alpha = 1
@@ -196,9 +220,8 @@ plot_bin_map<-function(
     theme_void()+
     theme(
       text = element_text(family=font),
-      #legend.position = "inside",
-      #legend.position.inside = c(0.70,0.1),  
-      legend.position = c(0.70,0.1),
+      legend.position = "inside",
+      legend.position.inside = c(0.70,0.1),  
       legend.direction = "horizontal", 
       legend.margin = margin(t = 0, r = 10, b = 0, l = 10),
       legend.title = element_text(size = 10, face='bold', color=pal_legend_text), 
@@ -210,31 +233,59 @@ plot_bin_map<-function(
   return(plot)
 }
 
-
-
-p <- plot_bin_map(
+p24 <- plot_bin_map(
   title = 'Edwards Aquifer Recharge Zone',
   subtitle = paste("Precipitation from", format(begin_time_local, "%Y-%m-%d %H:%M %Z"), "to", format(end_time_local, "%Y-%m-%d %H:%M %Z")),
   note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
   font = "",
-  map_rain = map_rain, map_streams = streams, map_lakes = lakes,
+  map_rain = map_rain_24hr, map_streams = streams, map_lakes = lakes,
   pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
-  pal_legend_text='black', map_type='cartolight'
+  pal_legend_text='black', map_type='cartolight',
+  rain_breaks = rain_breaks_24,
+  rain_labels = rain_labels_24,
+  rain_limits = rain_limits_24
 )
 
 ##### this one maps well
-library(magick)
+base_map_24 <- "/home/data/edwards_map_base_24.png"
+ggsave(base_map_24, p24, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
-base_map <- "/home/data/edwards_map_base.png"
-ggsave(base_map, p, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
-
-map_img   <- image_read(base_map)
-table_img <- image_read("/home/data/edwards_basin_table.png")
+map_img_24   <- image_read(base_map_24)
+table_img_24 <- image_read("/home/data/edwards_basin_table_24.png")
 
 # scale table to ~40% of map width; place at NE with a small inset
-map_w   <- image_info(map_img)$width
-table_img <- image_resize(table_img, paste0(as.integer(map_w * 0.45))) #.4
-final <- image_composite(map_img, table_img, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
+map_w_24   <- image_info(map_img_24)$width
+table_img_24 <- image_resize(table_img_24, paste0(as.integer(map_w * 0.45))) #.4
+final_24 <- image_composite(map_img_24, table_img_24, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
 
-image_write(final, "/home/data/edwards_map_with_table.png")
+image_write(final_24, "/home/data/edwards_map_with_table_24.png")
+
+
+pcum <- plot_bin_map(
+  title = 'Edwards Aquifer Recharge Zone',
+  subtitle = paste0("Precipitation from ", current_year, "-01-01 to ", format(end_time_local, "%Y-%m-%d %H:%M %Z")),
+  note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
+  font = "",
+  map_rain = map_rain_cum, map_streams = streams, map_lakes = lakes,
+  pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
+  pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
+  pal_legend_text='black', map_type='cartolight',
+  rain_breaks = rain_breaks_cum,
+  rain_labels = rain_labels_cum,
+  rain_limits = rain_limits_cum
+)
+
+##### this one maps well
+base_map_cum <- "/home/data/edwards_map_base_cum.png"
+ggsave(base_map_cum, pcum, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
+
+map_img_cum   <- image_read(base_map_cum)
+table_img_cum <- image_read("/home/data/edwards_basin_table_cum.png")
+
+# scale table to ~40% of map width; place at NE with a small inset
+map_w_cum   <- image_info(map_img_cum)$width
+table_img_cum <- image_resize(table_img_cum, paste0(as.integer(map_w * 0.45))) #.4
+final_cum <- image_composite(map_img_cum, table_img_cum, gravity = "northeast", offset = "+150+185") #offset = "+120+140"  # 120 px left, 140 px down from the top-right
+
+image_write(final_cum, "/home/data/edwards_map_with_table_cum.png")
