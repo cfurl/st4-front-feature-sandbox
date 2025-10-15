@@ -113,10 +113,49 @@ map_rain_cum <- map|>
   mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
   mutate(sum_rain_in = sum_rain/25.4)
 
-# --- Static legend settings (always show full range) ---
-rain_breaks_cum  <- c(14, 16, 18, 20, 23, 26, 29, 31, 33, 35, 37, 40)
-rain_labels_cum  <- c("14","16","18","20","23","26","29","31","33","35","37","40")
-rain_limits_cum  <- c(14, 40)
+centered_steps_min0 <- function(x, step = 2, n_side = 5) {
+  # x: numeric vector (e.g., YTD inches)
+  # step: bin width (inches)
+  # n_side: desired bins on each side of the median (total bins = 2*n_side + 1)
+  
+  x <- x[is.finite(x)]
+  stopifnot(length(x) > 0)
+  
+  med <- stats::median(x, na.rm = TRUE)
+  
+  # Bin containing the median, aligned to even numbers
+  center_low  <- step * floor(med / step)   # e.g., 25.6 -> 24
+  center_high <- center_low + step          # 24–26
+  
+  # Ideal symmetric window (may go < 0 early in the year)
+  lower <- center_low  - step * n_side
+  upper <- center_high + step * n_side
+  
+  # Enforce minimum bin 0–2; if we clipped below 0, push those bins to the top
+  if (lower < 0) {
+    deficit_bins <- as.integer(ceiling((0 - lower) / step))  # how many 2" bins went < 0
+    lower <- 0
+    upper <- upper + deficit_bins * step                     # keep 11 bins total
+  }
+  
+  rain_breaks_cum <- seq(lower, upper, by = step)                     # length = 12
+  rain_limits_cum <- c(lower, upper)
+  
+  lab_fun_cum <- function(v) {
+    labs <- as.character(v)
+    labs[v == min(v, na.rm = TRUE)] <- if (lower == 0) "0" else paste0("< ", lower)
+    labs[v == max(v, na.rm = TRUE)] <- paste0(upper,"+")
+    labs
+  }
+  
+  list(rain_breaks_cum = rain_breaks_cum, rain_limits_cum = rain_limits_cum, lab_fun_cum=lab_fun_cum)
+}
+
+
+cfg<-centered_steps_min0(map_rain_cum$sum_rain_in)
+
+# add your colors in here!!!!!!!!!!!!!!
+
 
 # Mapping function edited from Tanya's work
 
@@ -232,8 +271,8 @@ plot_bin_map<-function(
     # IMPORTANT: values anchors the palette to your breaks
   scale_fill_stepsn(
     colours = bin_cols,
-    breaks  = rain_breaks_24,
-    limits  = rain_limits_24,
+    breaks  = rain_breaks,
+    limits  = rain_limits,
     values  = scales::rescale(rain_breaks_24, from = rain_limits_24),
     labels  = lab_fun,           # <-- function, not character vector
     oob     = scales::squish,
@@ -287,10 +326,12 @@ p24 <- plot_bin_map(
   pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
-  rain_breaks = rain_breaks_24,
+  #rain_breaks = rain_breaks_24,
+  rain_breaks = cfg$rain_breaks_cum,
   bin_cols = cols_24,
-  lab_fun = lab_fun_24,
-  rain_limits = rain_limits_24
+  lab_fun = cfg$lab_fun_cum,
+  #rain_limits = rain_limits_24
+  rain_limits = cfg$rain_limits_cum
 )
 
 ##### this one maps well
