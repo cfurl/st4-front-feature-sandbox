@@ -55,6 +55,7 @@ if (nrow(time_check) == 0) {
 # This is where you query the parq files by time (not location yet)
 # carrying these commands around for whole state, could clip first
 # room for optimization here
+
 rain_24hr <- stg4_24hr_texas_parq |>
   filter (time %in% c(time_filter)) |>
   group_by (grib_id) %>%
@@ -92,8 +93,20 @@ map_rain_24hr <- map|>
 
 # --- Static legend settings (always show full range) ---
 rain_breaks_24  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
-rain_labels_24  <- c("0","0.1","0.25","0.5","1","2","3","4","6","8","10","12+")
 rain_limits_24  <- c(0, 12)
+
+cols_24 <- c("#A9E2F8","#2A4FD6","#22FE05","#248418",
+             "#F6FB07","#FFC348","#E01E17","#8C302C",
+             "#CC17DA","#AE60B3","#FDF5FF")
+
+lab_fun_24 <- function(x) {
+  labs <- as.character(x)
+  labs[x == max(x, na.rm = TRUE)] <- "12+"
+  labs
+}
+
+
+
 
 map_rain_cum <- map|>
   left_join(rain_cum, by = "grib_id")|>
@@ -124,7 +137,8 @@ plot_bin_map<-function(
     bin_alpha = 0.7,
     map_type='cartodark',
     rain_breaks = rain_breaks_24,
-    rain_labels = rain_labels_24,
+    bin_cols = NA,
+    lab_fun = NA,
     rain_limits = rain_limits_24
 ){
   
@@ -162,7 +176,7 @@ plot_bin_map<-function(
   
   # --- Static legend settings (always show full range) ---
   rain_breaks  <- rain_breaks
-  rain_labels  <- rain_labels
+  #rain_labels  <- rain_labels
   rain_limits  <- rain_limits
   
   # --- Set 0 rainfall to NA for transparency ---
@@ -194,26 +208,44 @@ plot_bin_map<-function(
     geom_sf(data = outline|>st_transform(crs = coord_sys), color = pal_outline, linewidth = 0.4) +  
     geom_sf(data=map_lakes|>st_transform(crs = coord_sys), fill= pal_water, color= pal_water, linewidth = 0.2)+
     geom_sf(data=map_streams|>st_transform(crs = coord_sys), color= pal_water, linewidth = 0.1)+
-    #geom_sf(data = gs_basins|>st_transform(crs = coord_sys), color = alpha("black", 0.5), linewidth = 0.2, fill=NA) +  
+     
     
-    scale_fill_stepsn(
-      colours = c("#82D3F0","#0826A2","#22FE05","#248418",
-                  "#F6FB07","#FFC348","#E01E17","#8C302C",
-                  "#CC17DA","#AE60B3","#FDF5FF"),
-      breaks    = rain_breaks,
-      limits    = rain_limits,
-      labels    = rain_labels,
-      oob       = scales::squish,
-      name      = "Rainfall (in)",
-      na.value  = NA  # keep transparency for NA (zero rainfall)
-    ) +
-    guides(
-      fill = guide_colorsteps(
-        title.position = "top",
-        title.vjust = 0.1,
-        show.limits = TRUE
-      )
-    )+
+    # scale_fill_stepsn(
+    #   colours = c("#82D3F0","#0826A2","#22FE05","#248418",
+    #               "#F6FB07","#FFC348","#E01E17","#8C302C",
+    #               "#CC17DA","#AE60B3","#FDF5FF"),
+    #   breaks    = rain_breaks,
+    #   limits    = rain_limits,
+    #   labels    = rain_labels,
+    #   oob       = scales::squish,
+    #   name      = "Rainfall (in)",
+    #   na.value  = NA  # keep transparency for NA (zero rainfall)
+    # ) +
+    # guides(
+    #   fill = guide_colorsteps(
+    #     title.position = "top",
+    #     title.vjust = 0.1,
+    #     show.limits = TRUE
+    #   )
+    # )+
+    
+    # IMPORTANT: values anchors the palette to your breaks
+  scale_fill_stepsn(
+    colours = bin_cols,
+    breaks  = rain_breaks_24,
+    limits  = rain_limits_24,
+    values  = scales::rescale(rain_breaks_24, from = rain_limits_24),
+    labels  = lab_fun,           # <-- function, not character vector
+    oob     = scales::squish,
+    name    = "Rainfall (in)",
+    na.value = NA
+  ) +
+    guides(fill = guide_colorsteps(title.position = "top", show.limits = TRUE, title.vjust=0.1))+
+
+    
+    
+    
+        
     coord_sf(
       xlim = c(st_bbox(bbox_transformed)["xmin"], st_bbox(bbox_transformed)["xmax"]),
       ylim = c(st_bbox(bbox_transformed)["ymin"], st_bbox(bbox_transformed)["ymax"])
@@ -256,7 +288,8 @@ p24 <- plot_bin_map(
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
   rain_breaks = rain_breaks_24,
-  rain_labels = rain_labels_24,
+  bin_cols = cols_24,
+  lab_fun = lab_fun_24,
   rain_limits = rain_limits_24
 )
 
