@@ -273,7 +273,7 @@ plot_bin_map<-function(
     colours = bin_cols,
     breaks  = rain_breaks,
     limits  = rain_limits,
-    values  = scales::rescale(rain_breaks_24, from = rain_limits_24),
+    values  = scales::rescale(rain_breaks, from = rain_limits),
     labels  = lab_fun,           # <-- function, not character vector
     oob     = scales::squish,
     name    = "Rainfall (in)",
@@ -326,12 +326,11 @@ p24 <- plot_bin_map(
   pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
-  #rain_breaks = rain_breaks_24,
-  rain_breaks = cfg$rain_breaks_cum,
+  rain_breaks = rain_breaks_24,
   bin_cols = cols_24,
-  lab_fun = cfg$lab_fun_cum,
-  #rain_limits = rain_limits_24
-  rain_limits = cfg$rain_limits_cum
+  lab_fun = lab_fun_24,
+  rain_limits = rain_limits_24
+  
 )
 
 ##### this one maps well
@@ -369,13 +368,14 @@ pcum <- plot_bin_map(
   subtitle = paste0("Precipitation from ", current_year, "-01-01 to ", format(end_time_local, "%Y-%m-%d %H:%M %Z")),
   note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
   font = "",
-  map_rain = map_rain_cum, map_streams = streams, map_lakes = lakes,
+  map_rain = map_rain_cum, map_streams = streams_dense, map_lakes = lakes,
   pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
-  rain_breaks = rain_breaks_cum,
-  rain_labels = rain_labels_cum,
-  rain_limits = rain_limits_cum
+  bin_cols = cols_24,
+  rain_breaks = cfg$rain_breaks_cum,
+  lab_fun = cfg$lab_fun_cum,
+  rain_limits = cfg$rain_limits_cum
 )
 
 ##### this one maps well
