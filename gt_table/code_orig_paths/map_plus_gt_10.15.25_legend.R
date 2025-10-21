@@ -23,7 +23,6 @@ if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
 }
 
-
 # radar bucket read
 bucket_radar <- s3_bucket("stg4-texas-24hr")
 s3_path_radar <- bucket_radar$path("")
@@ -85,7 +84,7 @@ map <- sf::read_sf("./gt_table/gis/usgs_dissolved.shp") # this is your hrap poly
 lakes <- read_sf("./gt_table/gis/reservoirs.shp")
 streams_dense<-read_sf("./gt_table/gis/recharge_zone_streams_med_density.shp")
 
-# this is where you subset the statewide set of bins by your shapefile area of interest
+# this is where you subset the statewide set of bins by your shapefile area of interest. DAILY SECTION
 map_rain_24hr <- map|>
   left_join(rain_24hr, by = "grib_id")|>
   mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
@@ -95,9 +94,7 @@ map_rain_24hr <- map|>
 rain_breaks_24  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
 rain_limits_24  <- c(0, 12)
 
-cols_24 <- c("#A9E2F8","#2A4FD6","#22FE05","#248418",
-             "#F6FB07","#FFC348","#E01E17","#8C302C",
-             "#CC17DA","#AE60B3","#FDF5FF")
+cols_24 <- c("#A9E2F8","#2A4FD6","#22FE05","#248418","#F6FB07","#FFC348","#E01E17","#8C302C", "#CC17DA","#AE60B3","#FDF5FF")
 
 lab_fun_24 <- function(x) {
   labs <- as.character(x)
@@ -105,18 +102,17 @@ lab_fun_24 <- function(x) {
   labs
 }
 
-
-
+# this is where you subset the statewide set of bins by your shapefile area of interest. YTD SECTION
 
 map_rain_cum <- map|>
   left_join(rain_cum, by = "grib_id")|>
   mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
   mutate(sum_rain_in = sum_rain/25.4)
 
+cols_cum<- c("#FFFFD9", "#F1F9B9", "#D6EFB3", "#ACDEB7", "#75C8BD", "#41B6C4", "#2798C1", "#2372B2", "#264DA0", "#1F2F88", "#081D58")
+
+# Dynamic legend scale function
 centered_steps_min0 <- function(x, step = 2, n_side = 5) {
-  # x: numeric vector (e.g., YTD inches)
-  # step: bin width (inches)
-  # n_side: desired bins on each side of the median (total bins = 2*n_side + 1)
   
   x <- x[is.finite(x)]
   stopifnot(length(x) > 0)
@@ -151,11 +147,7 @@ centered_steps_min0 <- function(x, step = 2, n_side = 5) {
   list(rain_breaks_cum = rain_breaks_cum, rain_limits_cum = rain_limits_cum, lab_fun_cum=lab_fun_cum)
 }
 
-
 cfg<-centered_steps_min0(map_rain_cum$sum_rain_in)
-
-# add your colors in here!!!!!!!!!!!!!!
-
 
 # Mapping function edited from Tanya's work
 
@@ -167,6 +159,7 @@ plot_bin_map<-function(
     map_rain = NA,
     map_streams = NA, 
     map_lakes = NA,
+    stream_basin_alpha = NA,
     pal_water='black',
     pal_title='white',
     pal_subtitle='white',
@@ -207,12 +200,7 @@ plot_bin_map<-function(
   note_title_pos <- st_sfc(st_point(c(-100.88, 30.43 - 1.41)), crs = 4326) |> 
     st_transform(crs = 3857) |> 
     st_coordinates() |> as.data.frame()
-  
-  # --- Static legend settings (always show full range) ---
- # rain_breaks  <- c(0, 0.1, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 10, 12)
-#  rain_labels  <- c("0","0.1","0.25","0.5","1","2","3","4","6","8","10","12+")
- # rain_limits  <- c(0, 12)
-  
+
   # --- Static legend settings (always show full range) ---
   rain_breaks  <- rain_breaks
   #rain_labels  <- rain_labels
@@ -237,36 +225,25 @@ plot_bin_map<-function(
       progress = "none",
       alpha = 1
     ) +
-    
-    
-    
+
     annotate(geom="text",x= title_pos$X,y=title_pos$Y,label=title,size=7.75,hjust=0, color = pal_title, family=font, fontface='bold')+
     annotate(geom="text",x= subtitle_pos$X,y=subtitle_pos$Y,label=subtitle,size=3.5,hjust=0, color = pal_subtitle, family=font)+
     annotate(geom="text",x=  note_title_pos$X,y= note_title_pos$Y,label=note_title,size=2,hjust=0, color = pal_subtitle, family=font)+
     geom_sf(data = map_rain, mapping = aes(fill = fill_val), color = pal_bin_outline, alpha = bin_alpha, na.rm = FALSE) +
     geom_sf(data = outline|>st_transform(crs = coord_sys), color = pal_outline, linewidth = 0.4) +  
     geom_sf(data=map_lakes|>st_transform(crs = coord_sys), fill= pal_water, color= pal_water, linewidth = 0.2)+
-    geom_sf(data=map_streams|>st_transform(crs = coord_sys), color= pal_water, linewidth = 0.1)+
-     
-    
-    # scale_fill_stepsn(
-    #   colours = c("#82D3F0","#0826A2","#22FE05","#248418",
-    #               "#F6FB07","#FFC348","#E01E17","#8C302C",
-    #               "#CC17DA","#AE60B3","#FDF5FF"),
-    #   breaks    = rain_breaks,
-    #   limits    = rain_limits,
-    #   labels    = rain_labels,
-    #   oob       = scales::squish,
-    #   name      = "Rainfall (in)",
-    #   na.value  = NA  # keep transparency for NA (zero rainfall)
-    # ) +
-    # guides(
-    #   fill = guide_colorsteps(
-    #     title.position = "top",
-    #     title.vjust = 0.1,
-    #     show.limits = TRUE
-    #   )
-    # )+
+    #geom_sf(data=map_streams|>st_transform(crs = coord_sys), color= pal_water, linewidth = 0.1,inherit.aes=FALSE)+
+    #geom_sf(data=map_subbasin|>st_transform(crs = coord_sys), color= "black", linewidth = 0.1, fill = NA, alpha=0,inherit.aes=FALSE)+
+    geom_sf(
+      data = map_streams |> st_transform(crs = coord_sys),
+      mapping = aes(),            # don't inherit aes(fill = ...)
+      color   = pal_water,
+      linewidth = 0.1,
+      fill    = NA,               # keep polygons hollow
+      alpha   = stream_basin_alpha,                # belt & suspenders
+      show.legend = FALSE,
+      inherit.aes = FALSE
+    ) +
     
     # IMPORTANT: values anchors the palette to your breaks
   scale_fill_stepsn(
@@ -280,11 +257,7 @@ plot_bin_map<-function(
     na.value = NA
   ) +
     guides(fill = guide_colorsteps(title.position = "top", show.limits = TRUE, title.vjust=0.1))+
-
-    
-    
-    
-        
+       
     coord_sf(
       xlim = c(st_bbox(bbox_transformed)["xmin"], st_bbox(bbox_transformed)["xmax"]),
       ylim = c(st_bbox(bbox_transformed)["ymin"], st_bbox(bbox_transformed)["ymax"])
@@ -305,25 +278,14 @@ plot_bin_map<-function(
   return(plot)
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+# Daily plot
 p24 <- plot_bin_map(
   title = 'Edwards Aquifer Recharge Zone',
   subtitle = paste("Precipitation from", format(begin_time_local, "%Y-%m-%d %H:%M %Z"), "to", format(end_time_local, "%Y-%m-%d %H:%M %Z")),
-  note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
+  note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "-", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
   font = "",
-  map_rain = map_rain_24hr, map_streams = streams_dense, map_lakes = lakes,
-  pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
+  map_rain = map_rain_24hr, map_streams = streams_dense, map_lakes = lakes, stream_basin_alpha = 1,
+  pal_water = '#2C6690', pal_title='black', bin_alpha = 0.8,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
   rain_breaks = rain_breaks_24,
@@ -352,27 +314,27 @@ local_png_24h <- sprintf("gt_table/output/contrib_zone_w_table_24h_%s.png", as.D
 # choose an S3 key (prefix/folder optional)
 s3_key_24h <- file.path("24h", basename(local_png_24h))  # e.g., maps/contrib_zone_w_table_ytd_2025-10-08.png
 
-#ok_24h <- put_object(
-#  file   = local_png_24h,
-#  object = s3_key_24h,
-#  bucket = "stg4-edwards-daily-maps",
-#  headers = list(`Content-Type` = "image/png"),
-#  multipart = TRUE
-#)
+ok_24h <- put_object(
+  file   = local_png_24h,
+  object = s3_key_24h,
+  bucket = "stg4-edwards-daily-maps",
+  headers = list(`Content-Type` = "image/png"),
+  multipart = TRUE
+)
 
-#if (!isTRUE(ok_24h)) stop("Upload failed: ", local_png_24h)
+if (!isTRUE(ok_24h)) stop("Upload failed: ", local_png_24h)
 
-
+#YTD plot
 pcum <- plot_bin_map(
   title = 'Edwards Aquifer Recharge Zone',
   subtitle = paste0("Precipitation from ", current_year, "-01-01 to ", format(end_time_local, "%Y-%m-%d %H:%M %Z")),
-  note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
+  note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "-", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")),
   font = "",
-  map_rain = map_rain_cum, map_streams = streams_dense, map_lakes = lakes,
-  pal_water = '#2C6690', pal_title='black', bin_alpha = 0.9,
+  map_rain = map_rain_cum, map_streams = gs_basins, map_lakes = lakes, stream_basin_alpha = 0,
+  pal_water = "black", pal_title='black', bin_alpha = 0.8,
   pal_subtitle='black', pal_outline="#697984", pal_bin_outline=NA,
   pal_legend_text='black', map_type='cartolight',
-  bin_cols = cols_24,
+  bin_cols = cols_cum,
   rain_breaks = cfg$rain_breaks_cum,
   lab_fun = cfg$lab_fun_cum,
   rain_limits = cfg$rain_limits_cum
@@ -392,24 +354,50 @@ final_cum <- image_composite(map_img_cum, table_img_cum, gravity = "northeast", 
 
 image_write(final_cum, paste0("gt_table/output/contrib_zone_w_table_ytd_",as.Date(time_filter),".png"))
 
-
-# radar bucket read
-#bucket_maps <- s3_bucket("stg4-edwards-daily-maps")
-#s3_path_maps <- bucket_maps$path("")
-
 # local file that image_write() just created
 local_png_ytd <- sprintf("gt_table/output/contrib_zone_w_table_ytd_%s.png", as.Date(time_filter))
 # choose an S3 key (prefix/folder optional)
 s3_key_ytd <- file.path("ytd", basename(local_png_ytd))  # e.g., maps/contrib_zone_w_table_ytd_2025-10-08.png
 
-#ok_ytd <- put_object(
-#  file   = local_png_ytd,
-#  object = s3_key_ytd,
-#  bucket = "stg4-edwards-daily-maps",
-#  headers = list(`Content-Type` = "image/png"),
-#  multipart = TRUE
-#)
+ok_ytd <- put_object(
+  file   = local_png_ytd,
+  object = s3_key_ytd,
+  bucket = "stg4-edwards-daily-maps",
+  headers = list(`Content-Type` = "image/png"),
+  multipart = TRUE
+)
 
-#if (!isTRUE(ok_ytd)) stop("Upload failed: ", local_png_ytd)
+if (!isTRUE(ok_ytd)) stop("Upload failed: ", local_png_ytd)
 
+
+###### Upload maps to 'latest' area publick bucket
+
+latest_bucket <- "stg4-edwards-latest"
+region <- ("us-east-2")
+
+# Overwrite fixed keys with 5-minute browser cache
+stopifnot(
+  isTRUE(put_object(
+    file     = local_png_24h,
+    object   = "latest_24h.png",
+    bucket   = latest_bucket,
+    region   = region,
+    multipart = TRUE,
+    headers  = list(
+      `Content-Type`  = "image/png",
+      `Cache-Control` = "public, max-age=300, must-revalidate"
+    )
+  )),
+  isTRUE(put_object(
+    file     = local_png_ytd,
+    object   = "latest_ytd.png",
+    bucket   = latest_bucket,
+    region   = region,
+    multipart = TRUE,
+    headers  = list(
+      `Content-Type`  = "image/png",
+      `Cache-Control` = "public, max-age=300, must-revalidate"
+    )
+  ))
+)
 

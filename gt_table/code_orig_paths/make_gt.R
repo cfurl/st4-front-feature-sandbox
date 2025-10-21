@@ -41,7 +41,7 @@ daily_edwards_stats <- stg4_edwards_daily_stats_24hr |>
 # Formatting: "< 0.10" when >0 & <0.10; "" for NA; otherwise 2 decimals
 fmt_in <- function(x) {
   ifelse(is.na(x), "",
-         ifelse(x > 0 & x < 0.10, "< 0.10", sprintf("%.2f", x)))
+         ifelse(x > 0 & x < 0.10, "< 0.1", sprintf("%.1f", x)))
 }
 
 
@@ -98,7 +98,7 @@ max_row <- wide_ready %>%
 
 cum_row <- wide_ready %>%
   select(display, value = cum_fmt) %>%
-  mutate(Metric = "Cumul Avg") %>%
+  mutate(Metric = "Basin Avg") %>%
   pivot_wider(names_from = display, values_from = value)
 
 tbl_basin_24hr <- bind_rows(avg_row, max_row) %>%
