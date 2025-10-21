@@ -17,7 +17,8 @@ library("webshot2")
 # remove this from container setup, this gives your local dev the AWS access
 # readRenviron(".Renviron") # when it's in gitignore
 
-required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+#required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
 missing  <- required[Sys.getenv(required) == ""]
 if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
@@ -78,11 +79,11 @@ end_time_local <- with_tz(time_filter, "America/Chicago")
 begin_time_local <- end_time_local - days(1)
 
 # call the gis layers you want mapped
-gs_basins<-read_sf("./gt_table/gis/usgs_basins.shp")
-map <- sf::read_sf("./gt_table/gis/usgs_dissolved.shp") # this is your hrap polygon
+gs_basins<-read_sf("/home/gis/usgs_basins.shp")
+map <- sf::read_sf("/home/gis/usgs_dissolved.shp") # this is your hrap polygon
 #streams <- read_sf("./gt_table/gis/streams_recharge.shp")
-lakes <- read_sf("./gt_table/gis/reservoirs.shp")
-streams_dense<-read_sf("./gt_table/gis/recharge_zone_streams_med_density.shp")
+lakes <- read_sf("/home/gis/reservoirs.shp")
+streams_dense<-read_sf("/home/gis/recharge_zone_streams_med_density.shp")
 
 # this is where you subset the statewide set of bins by your shapefile area of interest. DAILY SECTION
 map_rain_24hr <- map|>
