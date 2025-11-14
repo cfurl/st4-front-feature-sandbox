@@ -10,6 +10,7 @@ library("ggspatial")
 library("ggplot2")
 library("prettymapr")
 library("shiny")
+library("tictoc")
 #library("ggiraph")
 
 ######################## Some S3 things #####################
@@ -56,15 +57,16 @@ if (nrow(time_check) == 0) {
 
 # This is where you query the parq files by time (not location yet)
 # carrying these commands around for whole state, could clip first
+tic()
 d <- stg4_24hr_texas_parq |>
   #filter (time %in% c(time_filter)) |>
-  filter (year==2002) |>
+  filter (year==2002 & month==1) |>
   group_by (grib_id) %>%
   summarize(
     sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
   arrange(desc(sum_rain)) |>
   collect()
-
+toc()
 # Make local time labels for main title after you've queried which days (yesterday or today) are available.
 end_time_local <- with_tz(time_filter, "America/Chicago")
 begin_time_local <- end_time_local - days(1)
@@ -217,9 +219,9 @@ ui <- fluidPage(
       dateRangeInput(
         inputId = "date_range",
         label   = "Date range",
-        start   = "2002-01-01",          # default start
-        end     = "2002-01-07",              # default end
-        #start   = Sys.Date() - 7,          # default start
+        start   = "2003-01-01",          # default start
+        end     = "2003-01-07",          # default end
+       # start   = Sys.Date() - 7,          # default start
         #end     = Sys.Date(),              # default end
         min     = as.Date("2002-01-01"),   # adjust to earliest STG4 date
         max     = Sys.Date()
@@ -248,8 +250,12 @@ server <- function(input, output, session) {
     # Aggregate 24-hr totals over the selected range (inclusive)
     d <- stg4_24hr_texas_parq |>
       filter(
-        as.Date(time) >= start_date,
-        as.Date(time) <= end_date
+        #year==2003,
+        #month ==10,
+        as.Date(time) >= "2003-10-01",
+        as.Date(time) <= "2003-10-10"
+        #as.Date(time) >= start_date,
+        #as.Date(time) <= end_date
       ) |>
       group_by(grib_id) |>
       summarize(
