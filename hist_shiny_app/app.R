@@ -31,57 +31,14 @@ s3_path <- bucket$path("")
 stg4_24hr_texas_parq <- open_dataset(s3_path)
 
 ############################ time stamps #############
-
 current_utc_date_time <- with_tz(Sys.time(), "UTC")
 current_central_date_time <- with_tz(Sys.time(), "America/Chicago")
-current_utc_time <- format(with_tz(Sys.time(), "UTC"), "%H:%M:%S")
-current_utc_date <- as_date(with_tz(Sys.time(), "UTC"))
-
-# Create exact timestamps (UTC) for noon on yesterday and today
-t1 <- as.POSIXct(paste(Sys.Date() - 0, "12:00:00"), tz = "UTC")  # today 0
-t2 <- as.POSIXct(paste(Sys.Date() - 1, "12:00:00"), tz = "UTC") # yesterday 1
-
-# This sequence is how you get the most recent data.  It today's data hasn't dropped yet
-# it will go query yesterday's data.
-
-time_check <- stg4_24hr_texas_parq |>
-  select(time)|>
-  filter (time %in% c(t1)) |>
-  collect()
-
-if (nrow(time_check) == 0) {
-  time_filter<-t2
-} else {
-  time_filter<-t1
-}
-
-# This is where you query the parq files by time (not location yet)
-# carrying these commands around for whole state, could clip first
-tic()
-d <- stg4_24hr_texas_parq |>
-  #filter (time %in% c(time_filter)) |>
-  filter (year==2002 & month==1) |>
-  group_by (grib_id) %>%
-  summarize(
-    sum_rain = sum(rain_mm, na.rm=TRUE)) %>%
-  arrange(desc(sum_rain)) |>
-  collect()
-toc()
-# Make local time labels for main title after you've queried which days (yesterday or today) are available.
-end_time_local <- with_tz(time_filter, "America/Chicago")
-begin_time_local <- end_time_local - days(1)
 
 # call the gis layers you want mapped
 gs_basins<-read_sf("../gis/usgs_basins.shp")
 map <- sf::read_sf("../gis/usgs_dissolved.shp") # this is your hrap polygon
 streams <- read_sf("../gis/streams_recharge.shp")
 lakes <- read_sf("../gis/reservoirs.shp")
-
-# this is where you subset the statewide set of bins by your shapefile area of interest
-map_rain <- map|>
-  left_join(d, by = "grib_id")|>
-  mutate(cubic_m_precip = bin_area * sum_rain * 0.001)|>
-  mutate(sum_rain_in = sum_rain/25.4)
 
 # Mapping function edited from Tanya's work
 plot_bin_map<-function(
@@ -191,21 +148,58 @@ plot_bin_map<-function(
   return(plot)
 }
 
+# create parquet filter
+filter_date_range <- function(ds, start_date, end_date) {
+  start_date <- as.Date(start_date)
+  end_date   <- as.Date(end_date)
+  
+  sy <- lubridate::year(start_date);  sm <- lubridate::month(start_date)
+  ey <- lubridate::year(end_date);    em <- lubridate::month(end_date)
+  
+  # base dataset (Arrow Dataset or arrow_dplyr_query)
+  ds_base <- ds
+  
+  if (sy == ey) {
+    # Simple case: everything is inside one year
+    ds_sub <- ds_base %>%
+      filter(
+        year == sy,
+        month >= sm,
+        month <= em
+      )
+  } else {
+    # Start-year: months >= sm
+    ds_start <- ds_base %>%
+      filter(
+        year == sy,
+        month >= sm
+      )
+    
+    # End-year: months <= em
+    ds_end <- ds_base %>%
+      filter(
+        year == ey,
+        month <= em
+      )
+    
+    # Middle full years, if any
+    if (ey > sy + 1) {
+      ds_mid <- ds_base %>%
+        filter(
+          year > sy,
+          year < ey
+        )
+      ds_sub <- dplyr::union_all(ds_start, ds_mid) %>%
+        dplyr::union_all(ds_end)
+    } else {
+      ds_sub <- dplyr::union_all(ds_start, ds_end)
+    }
+  }
+  
+  ds_sub
+}
 
-
-
-
-
-
-
-
-
-#ui <- fluidPage(
-#  style = "padding:0; margin:0;",
-#  tags$head(tags$title("Rainfall Map")),
-#  plotOutput("rain_map", width = "100%", height = "100vh")
-#)
-
+## ---- UI ----
 ui <- fluidPage(
   style = "padding:0; margin:0;",
   tags$head(tags$title("Rainfall Map")),
@@ -221,9 +215,7 @@ ui <- fluidPage(
         label   = "Date range",
         start   = "2003-01-01",          # default start
         end     = "2003-01-07",          # default end
-       # start   = Sys.Date() - 7,          # default start
-        #end     = Sys.Date(),              # default end
-        min     = as.Date("2002-01-01"),   # adjust to earliest STG4 date
+        min     = as.Date("2002-01-01"), # earliest STG4 date (adjust if needed)
         max     = Sys.Date()
       )
     ),
@@ -237,48 +229,52 @@ ui <- fluidPage(
   )
 )
 
+## ---- server ----
 
 server <- function(input, output, session) {
   
-  # Build map_rain based on selected date range
   map_rain_reactive <- reactive({
     req(input$date_range)
     
-    start_date <- input$date_range[1]
-    end_date   <- input$date_range[2]
+    start_date <- as.Date(input$date_range[1])
+    end_date   <- as.Date(input$date_range[2])
     
-    # Aggregate 24-hr totals over the selected range (inclusive)
-    d <- stg4_24hr_texas_parq |>
+    # Build UTC timestamp bounds for the *exact* date window
+    start_ts <- as.POSIXct(start_date, tz = "UTC")
+    end_ts   <- as.POSIXct(end_date + 1, tz = "UTC")  # < end_date+1 = inclusive end_date
+    
+    # 1) Prune by year/month partitions with Arrow-friendly filter
+    ds_window <- stg4_24hr_texas_parq %>%
+      filter_date_range(start_date, end_date)
+    
+    # 2) Within those months, refine by time and aggregate ON THE DATASET
+    d <- ds_window %>%
       filter(
-        #year==2003,
-        #month ==10,
-        as.Date(time) >= "2003-10-01",
-        as.Date(time) <= "2003-10-10"
-        #as.Date(time) >= start_date,
-        #as.Date(time) <= end_date
-      ) |>
-      group_by(grib_id) |>
+        time >= start_ts,
+        time <  end_ts
+      ) %>%
+      group_by(grib_id) %>%
       summarize(
         sum_rain = sum(rain_mm, na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      arrange(desc(sum_rain)) |>
+        .groups  = "drop"
+      ) %>%
+      arrange(desc(sum_rain)) %>%
       collect()
     
-    # Join to map grid and add derived fields
-    map |>
-      left_join(d, by = "grib_id") |>
+    # 3) Join to map grid and add derived fields
+    map %>%
+      left_join(d, by = "grib_id") %>%
       mutate(
-        cubic_m_precip = bin_area * sum_rain * 0.001,
-        sum_rain_in    = sum_rain / 25.4
+        cubic_m_precip = bin_area * sum_rain * 0.001,  # mm -> m * area
+        sum_rain_in    = sum_rain / 25.4               # mm -> inches
       )
   })
   
   output$rain_map <- renderPlot({
     req(input$date_range)
     
-    start_date <- input$date_range[1]
-    end_date   <- input$date_range[2]
+    start_date <- as.Date(input$date_range[1])
+    end_date   <- as.Date(input$date_range[2])
     map_rain   <- map_rain_reactive()
     
     plot_bin_map(
@@ -311,29 +307,5 @@ server <- function(input, output, session) {
   }, res = 144)
 }
 
-
-
-
-#server <- function(input, output, session) {
-#  output$rain_map <- renderPlot({
-#    plot_bin_map(title = 'Edwards Aquifer Recharge Zone',
-#                 subtitle = paste("Precipitation from", format(begin_time_local, "%Y-%m-%d %H:%M %Z"), "to",format(end_time_local, "%Y-%m-%d %H:%M %Z")),
- #                note_title = paste("Produced at", format(current_utc_date_time, "%Y-%m-%d %H:%M %Z"), "and", format(current_central_date_time, "%Y-%m-%d %H:%M %Z")) ,
-  #               font = "",
-   #              map_rain = map_rain,
-    #             map_streams = streams,
-     #            map_lakes = lakes,
-      #           pal_water = '#2C6690',
-       #          pal_title='black',
-        #         bin_alpha = 0.9,
-         #        pal_subtitle='black',
-          #       pal_outline="#697984",
-           #      pal_bin_outline=NA,
-            #     pal_legend_text='black',
-             #    map_type='cartolight'
- #   )}, res = 144) 
-#}
-
 shinyApp(ui, server)
 
-# opencycle api required, looks nice thought, has some terrain, light roads, no river
