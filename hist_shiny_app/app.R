@@ -26,7 +26,8 @@ if (length(missing)) {
 
 # make sure you can connect to your bucket and open SubTreeFileSystem and identify path
 # then connect to the .parq files on the s3 storage
-bucket <- s3_bucket("stg4-texas-24hr-historical")
+#bucket <- s3_bucket("stg4-texas-24hr-historical")
+bucket <- s3_bucket("stg4-edwards-24hr-historical")
 s3_path <- bucket$path("")
 stg4_24hr_texas_parq <- open_dataset(s3_path)
 
