@@ -1,0 +1,99 @@
+#' This script is based off of 'manually_create_2025_ytd_basin_avgs.R' which can be found in the
+#' daily_basin_avg_update/code_orig_paths.  I need to know what the daily avg values are at each
+#' geographic location to create my ribbons around the current year hyetograph.  When the year rolls
+#' over, I'll have to come back to this script and generate the values for 2026. I feel like something is 
+#' going to break here on New Year's day - maybe not.
+
+# load packages
+library("aws.s3")
+library("arrow")
+library("dplyr")
+library("lubridate")
+library("tidyr")
+library("readr")
+library("stringr")
+#library("sf")
+library("fs")
+
+# keep out of github and docker containers
+readRenviron(".Renviron") 
+
+# some AWS checks
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
+missing  <- required[Sys.getenv(required) == ""]
+if (length(missing)) {
+  stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
+}
+
+# make sure you can connect to your bucket and open SubTreeFileSystem and identify path
+# then connect to the .parq files on the s3 storage
+bucket_radar <- s3_bucket("stg4-edwards-24hr-historical")
+s3_path_radar <- bucket_radar$path("")
+stg4_24hr_texas_parq <- open_dataset(s3_path_radar)
+
+for (y in 2002:2024){
+
+# collect your .parq/s3 for a given year, rewrite time column. 
+daily_rain <- stg4_24hr_texas_parq |>
+  filter (year == y) |>
+  collect() |>
+  mutate(time = as.POSIXct(time, tz="UTC"))
+
+# using base R order date from oldest to newest, drop hms - using as.Date. This
+# solved my loop problem. was having trouble with timestamp. date works fine.
+daily_rain_loop <- unique(as.Date(daily_rain$time))[order(unique(as.Date(daily_rain$time)))]  #base R
+
+# list your shapefiles with trimmed bins
+aoi <- list.files ("./daily_basin_avg_update/gis", pattern = "\\.csv$")
+
+# this is your OUTER LOOP
+for (a in aoi) {
+  
+  # drop the .shp for your table you write  
+  basin <- str_replace(basename(a), "\\.[cC][sS][vV]$", "")  # case-insensitive
+  
+  map <- read_csv(paste0("./daily_basin_avg_update/gis/",a)) #|>
+  #st_drop_geometry()
+  
+  basin_area <- sum(map$bin_area) # basin area in m2
+  
+  # subset your daily rain by your aoi before you enter the time loop. Big saver.
+  subset <- left_join(map,daily_rain, by = c("grib_id","hrap_x","hrap_y")) # subset geography before time filter
+  
+  
+  # initilalize empty tibble
+  basin_avgs_2025_ytd <- tibble(
+    basin           = character(),                 # chr
+    date              = as.Date(character()),
+    year = integer(),
+    daily_basin_avg_in = numeric(),                   # dbl
+    daily_max_bin_in   = numeric()                    # dbl
+  )
+  
+  
+  # INNER LOOP
+  for (d in daily_rain_loop){
+    
+    daily_rain_filter <- subset |>
+      filter (as.Date(time) == as.Date(d)) |>
+      arrange(desc(rain_mm))|>
+      mutate(cubic_m_precip = bin_area * rain_mm * .001) # this give you cubic m of precip for each radar bin
+    
+    basin_rain_cubic_meter <- sum(daily_rain_filter$cubic_m_precip) 
+    basin_rain_meter <- basin_rain_cubic_meter/ basin_area
+    basin_rain_inch <- basin_rain_meter * 39.37
+    basin_max_bin <- daily_rain_filter$rain_mm[1] *.03937
+    
+    daily_update <- tibble(
+      basin           = basin,                                   # chr vec
+      date              = as.Date(d),
+      year  = year(date),
+      daily_basin_avg_in = basin_rain_inch,                     # dbl vec
+      daily_max_bin_in   = basin_max_bin                        # dbl vec
+    )
+    
+    write_csv_append(daily_update, "./hyetograph/output/basin_avgs_2002_2024.csv")
+  }
+}
+}
+
