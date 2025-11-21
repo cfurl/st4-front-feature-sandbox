@@ -31,6 +31,16 @@ bucket_radar <- s3_bucket("stg4-edwards-24hr-historical")
 s3_path_radar <- bucket_radar$path("")
 stg4_24hr_texas_parq <- open_dataset(s3_path_radar)
 
+# A function to write csv headers only once at top of csv
+write_csv_append <- function(df, path) {
+  if (!file_exists(path)) {
+    write_csv(df, path, append = FALSE, col_names = TRUE)   # first time: header
+  } else {
+    write_csv(df, path, append = TRUE,  col_names = FALSE)  # later: no header
+  }
+}
+
+
 for (y in 2002:2024){
 
 # collect your .parq/s3 for a given year, rewrite time column. 
