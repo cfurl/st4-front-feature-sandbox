@@ -11,12 +11,12 @@ library("readr")
 library("stringr")
 # Read in your month_day stats by basin:
 md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
-md<-read_csv("C:\\stg4\\front\\st4-front-feature-sandbox\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
+#md<-read_csv(".\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
 
 # grab your most recent data written on your s3 in the dailystat
 
 # keep out of github and docker containers
-readRenviron(".Renviron") 
+#readRenviron(".Renviron") 
 
 # some AWS checks
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
@@ -98,58 +98,4 @@ current_with_stats <- current_with_ytd %>%
   mutate(name="Median")
 
 write_csv(current_with_stats, "/home/data/ready_2_hyet.csv", append = FALSE, col_names = TRUE) 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 3) Map old basin names -> display names you want on the GT table
-name_map <- c(
-  "Frio-Dry Frio"     = "Frio",
-  "Seco-Hondo"        = "Hondo",
-  "Cibolo-Dry Comal"  = "Cibolo",
-  "Guadalupe"         = "Guad",
-  "usgs_dissolved"    = "Rchg Zn",
-  "Nueces"            = "Nueces",
-  "Sabinal"           = "Sabinal",
-  "Medina"            = "Medina",
-  "Bexar"             = "Bexar",
-  "Blanco"            = "Blanco"
-)
-
-# 5) Build the two rows with renamed display columns
-wide_ready <- daily_edwards_stats %>%
-  mutate(
-    display = recode(basin, !!!name_map),
-    avg_fmt = fmt_in(daily_basin_avg_in),
-    max_fmt = fmt_in(daily_max_bin_in),
-    cum_fmt = fmt_in(cumulative_precip_in)
-  )
 
