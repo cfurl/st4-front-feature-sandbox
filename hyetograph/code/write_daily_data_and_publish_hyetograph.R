@@ -9,13 +9,14 @@ library("lubridate")
 library("tidyr")
 library("readr")
 library("stringr")
-
+library("ggplot2")
+library("patchwork")
 
 
 # NEED A DATA FOLDER IN DOCKER FILE
 # Read in your month_day stats by basin:
 md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
-md<-read_csv("C:\\stg4\\front\\st4-front-feature-sandbox\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
+md<-read_csv(".\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
 
 # grab your most recent data written on your s3 in the dailystat
 
@@ -101,10 +102,11 @@ current_with_stats <- current_with_ytd %>%
   select(month, day, min_rain, max_rain, perc10, perc25, perc75, perc90, median_rain, date, basin, cumulative_basin_avg_in) |>
   mutate(name="Median")
 
-write_csv(current_with_stats, "/home/data/ready_2_hyet.csv", append = FALSE, col_names = TRUE) 
+#write_csv(current_with_stats, "/home/data/ready_2_hyet.csv", append = FALSE, col_names = TRUE) 
 
 #for ribbon charts
-cumulative_subbasin<-read.csv("/home/data/ready_2_hyet.csv")|>
+#cumulative_subbasin<-read.csv("/home/data/ready_2_hyet.csv")|>
+cumulative_subbasin<-current_with_stats|>
   mutate(date = as.Date(date))
 
 
@@ -115,6 +117,8 @@ date_info <- cumulative_subbasin %>%
     last_date_with_data = max(date[!is.na(cumulative_basin_avg_in)])
   )
 
+start_date <- date_info$first_date[[1]]
+end_date   <- date_info$last_date_with_data[[1]]
 
 
 basins<-cumulative_subbasin|>filter(basin!='usgs_dissolved')|>distinct(basin)|>pull()
@@ -425,8 +429,9 @@ fp <- (guide_area() +
   ) +
   plot_annotation(
     title   = paste0("Basin-Averaged NEXRAD Hyetographs (in) from ",
-                     format(date_info[1], "%Y-%m-%d"), " to ",
-                     format(date_info[2], "%Y-%m-%d")),
+                     format(start_date, "%Y-%m-%d"), " to ",
+                     format(end_date, "%Y-%m-%d")),
+    #caption = "Ribbon displays 25ᵗʰ and 75ᵗʰ percentiles"
     caption = expression("Ribbon displays 25"^"th" * " and 75"^"th" * " percentiles")
   ) &
   theme(
@@ -449,7 +454,8 @@ fp <- (guide_area() +
   )
 
 
-combo_hyet <- "hyetograph/output/combo_hyet.png"
+#combo_hyet <- "hyetograph/output/combo_hyet.png"
+combo_hyet <- ".//hyetograph//output//combo_hyet.png"
 ggsave(combo_hyet, fp, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
 
@@ -457,51 +463,54 @@ ggsave(combo_hyet, fp, device = ragg::agg_png, width = 3840, height = 2160, unit
 # when you get down here look at the map_plus_gt to see how you wrote to multiple buckets.
 # Too much for me to do on a Monday before Thanksgiving
 
+# local file you just wrote with ggsave()
+local_png_hyet <- combo_hyet
 
+# use the same “end of period” date you’re using elsewhere
+hyet_date <- as.Date(end_date)   # or as.Date(time_filter), or Sys.Date()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 3) Map old basin names -> display names you want on the GT table
-name_map <- c(
-  "Frio-Dry Frio"     = "Frio",
-  "Seco-Hondo"        = "Hondo",
-  "Cibolo-Dry Comal"  = "Cibolo",
-  "Guadalupe"         = "Guad",
-  "usgs_dissolved"    = "Rchg Zn",
-  "Nueces"            = "Nueces",
-  "Sabinal"           = "Sabinal",
-  "Medina"            = "Medina",
-  "Bexar"             = "Bexar",
-  "Blanco"            = "Blanco"
+# S3 object key: in 'hyet/' folder with date in name
+s3_key_hyet <- file.path(
+  "hyet",
+  sprintf("combo_hyet_%s.png", hyet_date)   # combo_hyet_2025-12-01.png
 )
 
-# 5) Build the two rows with renamed display columns
-wide_ready <- daily_edwards_stats %>%
-  mutate(
-    display = recode(basin, !!!name_map),
-    avg_fmt = fmt_in(daily_basin_avg_in),
-    max_fmt = fmt_in(daily_max_bin_in),
-    cum_fmt = fmt_in(cumulative_precip_in)
+ok_hyet <- put_object(
+  file    = local_png_hyet,
+  object  = s3_key_hyet,
+  bucket  = "stg4-edwards-daily-maps",
+  headers = list(`Content-Type` = "image/png"),
+  multipart = TRUE
+)
+
+if (!isTRUE(ok_hyet)) stop("Upload failed: ", local_png_hyet)
+
+
+
+
+
+
+
+###### Upload maps to 'latest' area publick bucket
+
+latest_bucket <- "stg4-edwards-latest"
+region <- ("us-east-2")
+
+
+
+ok_latest_hyet <- put_object(
+  file     = local_png_hyet,
+  object   = "latest_hyet.png",
+  bucket   = latest_bucket,
+  region   = region,
+  multipart = TRUE,
+  headers  = list(
+    `Content-Type`  = "image/png",
+    `Cache-Control` = "public, max-age=300, must-revalidate"
   )
+)
+
+if (!isTRUE(ok_latest_hyet)) stop("Upload failed: ", local_png_hyet)
+
+
 
