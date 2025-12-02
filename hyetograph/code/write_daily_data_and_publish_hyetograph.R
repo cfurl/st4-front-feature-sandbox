@@ -1,7 +1,14 @@
-# First, I need to do is calculate daily averages for each day of the record 2002-2024 for each sub-basin and entire rchg zn.
-# Second, I need to make a sheet with percentiles at different month-day combinations that will be used for ribbons.
-library(dplyr)
-library(readr)
+# This code accesses the "stg4-edwards-daily-stats-24hr" bucket, which writes data daily, and combines it with static
+# statistics from 2002-2024 which are hardwired into your container. This combined dataset is then used to plot hyetographs and 
+# copy those .png's to S3 buckets (archive bucket and latest bucket).  Simplified workflow:
+# 1 pull down daily stat combine with hardwired historical stat
+#'2 define plotting function for single and facet plots and then execute
+#'3 use patchwork to make a single figure
+#'4 write to historical repository s3 and to latest s3 bucket for web display
+
+#call libraries
+library("dplyr")
+library("readr")
 library("aws.s3")
 library("arrow")
 library("dplyr")
@@ -12,16 +19,16 @@ library("stringr")
 library("ggplot2")
 library("patchwork")
 
+# keep out of github and docker containers
+readRenviron(".Renviron") 
 
 # NEED A DATA FOLDER IN DOCKER FILE
-# Read in your month_day stats by basin:
-md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
+# Read in your month_day stats by basin for 2002-2024, this will make the ribbon in the plot:
+#md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
 md<-read_csv(".\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
 
 # grab your most recent data written on your s3 in the dailystat
 
-# keep out of github and docker containers
-readRenviron(".Renviron") 
 
 # some AWS checks
 required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
@@ -30,18 +37,19 @@ if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
 }
 
-# stats bucket read
-bucket_stats <- s3_bucket("stg4-edwards-daily-stats-24hr")
-s3_path_stats <- bucket_stats$path("")
-stg4_edwards_daily_stats_24hr <- open_dataset(s3_path_stats)
-
+# Get system date items
 current_utc_date <- as_date(with_tz(Sys.time(), "UTC"))
-
 current_year<-year(current_utc_date)
 current_month<-month(current_utc_date)
 current_day<-day(current_utc_date)
 
-# collect your .parq/s3 whole enchilada
+# Connect to your stats bucket that writes daily basin averages
+# This is done with your container called 'dailystat'
+bucket_stats <- s3_bucket("stg4-edwards-daily-stats-24hr")
+s3_path_stats <- bucket_stats$path("")
+stg4_edwards_daily_stats_24hr <- open_dataset(s3_path_stats)
+
+# collect your daily stat .parq for the entire current year
 ytd_edwards_stats <- stg4_edwards_daily_stats_24hr |>
   collect()  |>
   group_by(basin)|>
@@ -52,7 +60,9 @@ ytd_edwards_stats <- stg4_edwards_daily_stats_24hr |>
   select(basin, date, month, day, cumulative_basin_avg_in)
 
 
-# join your ytd_edwards_stats that update daily with the hard-wired 2002-2024 statistics
+# join your daily write ytd edwards stats with the hard-wired 2002-2024 statistics:
+
+## 1. grab current year and make sequence by day
 this_year <- year(current_utc_date)
 
 full_calendar <- tibble(
@@ -62,10 +72,10 @@ full_calendar <- tibble(
     by = "day")) %>%
   mutate(month = month(date), day   = day(date))
 
-## 3. Get the set of basins you care about
+## 2. Get the set of basins you care about - all 10 in this case
 basins <- md %>% distinct(basin) %>% pull()
 
-## 4. Cross basins with the full calendar
+## 3. Cross basins with the full calendar
 ##    (one row per basin per day for the whole year)
 template <- crossing(
   basin = basins,
@@ -77,7 +87,7 @@ template <- crossing(
     day   = as.double(day)
   )
 
-## 5. Join in the current-year cumulative rainfall (YTD)
+## 4. Join in the current-year cumulative rainfall (YTD)
 ##    This introduces NAs for dates that don't exist yet in ytd_edwards_stats.
 current_with_ytd <- template %>%
   left_join(
@@ -86,7 +96,7 @@ current_with_ytd <- template %>%
     by = c("basin", "date")
   )
 
-## 6. Join in the historical stats by (basin, month, day)
+## 5. Join in the historical stats by (basin, month, day)
 ##    You can choose whichever columns you want from md for your ribbon.
 current_with_stats <- current_with_ytd %>%
   left_join(
@@ -102,15 +112,13 @@ current_with_stats <- current_with_ytd %>%
   select(month, day, min_rain, max_rain, perc10, perc25, perc75, perc90, median_rain, date, basin, cumulative_basin_avg_in) |>
   mutate(name="Median")
 
-#write_csv(current_with_stats, "/home/data/ready_2_hyet.csv", append = FALSE, col_names = TRUE) 
+# This concludes processing data for the Hyetographs, now we are ready to start working on the graphs:
 
 #for ribbon charts
-#cumulative_subbasin<-read.csv("/home/data/ready_2_hyet.csv")|>
 cumulative_subbasin<-current_with_stats|>
   mutate(date = as.Date(date))
 
-
-# some time things for figure labeling
+# Figure out first data and last date that has data (ie no NA), this is used for labeling in graph
 date_info <- cumulative_subbasin %>%
   summarise(
     first_date = min(date, na.rm = TRUE),
@@ -120,10 +128,10 @@ date_info <- cumulative_subbasin %>%
 start_date <- date_info$first_date[[1]]
 end_date   <- date_info$last_date_with_data[[1]]
 
-
+# collect basins you want to use in the facet chart
 basins<-cumulative_subbasin|>filter(basin!='usgs_dissolved')|>distinct(basin)|>pull()
 
-
+# Facet hyetograph function
 plot_ribbon_facet<-function(
     data, 
     basins, 
@@ -259,6 +267,7 @@ plot_ribbon_facet<-function(
   return(plot)
 }
 
+# Singel hyetograph function
 plot_ribbon<-function(
     data, 
     select_basin, 
@@ -393,7 +402,8 @@ plot_ribbon<-function(
 }
 
 
-#### function to run patchwork and remove subtitles
+
+# Execute facet plot function on individual sub-basins
 precip_facet<-plot_ribbon_facet(
   data = cumulative_subbasin, 
   basins = basins, 
@@ -405,6 +415,7 @@ precip_facet<-plot_ribbon_facet(
   legend = T
 )
 
+# Execute single plot function on individual usgs recharge zone area
 precip_total<-plot_ribbon(
   data = cumulative_subbasin, 
   select_basin = "usgs_dissolved", 
@@ -414,7 +425,7 @@ precip_total<-plot_ribbon(
   subtitle = "Edwards Aquifer Recharge Zone",
   caption = NA)
 
-
+# use patchwork to combine the individual plots into a single graph and save as .png
 fp <- (guide_area() +
          (
            precip_total +
@@ -459,10 +470,7 @@ combo_hyet <- ".//hyetograph//output//combo_hyet.png"
 ggsave(combo_hyet, fp, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
 
-
-# when you get down here look at the map_plus_gt to see how you wrote to multiple buckets.
-# Too much for me to do on a Monday before Thanksgiving
-
+# Write your .png to the historical repository "stg4-edwards-daily-maps"
 # local file you just wrote with ggsave()
 local_png_hyet <- combo_hyet
 
@@ -485,18 +493,11 @@ ok_hyet <- put_object(
 
 if (!isTRUE(ok_hyet)) stop("Upload failed: ", local_png_hyet)
 
-
-
-
-
-
-
+# Write your .png to the latest repository "stg4-edwards-latest"
 ###### Upload maps to 'latest' area publick bucket
 
 latest_bucket <- "stg4-edwards-latest"
 region <- ("us-east-2")
-
-
 
 ok_latest_hyet <- put_object(
   file     = local_png_hyet,
@@ -511,6 +512,3 @@ ok_latest_hyet <- put_object(
 )
 
 if (!isTRUE(ok_latest_hyet)) stop("Upload failed: ", local_png_hyet)
-
-
-
