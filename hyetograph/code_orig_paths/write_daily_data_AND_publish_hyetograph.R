@@ -20,15 +20,18 @@ library("ggplot2")
 library("patchwork")
 
 # keep out of github and docker containers
-#readRenviron(".Renviron") 
+readRenviron(".Renviron") 
 
 # NEED A DATA FOLDER IN DOCKER FILE
 # Read in your month_day stats by basin for 2002-2024, this will make the ribbon in the plot:
-md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
-#md<-read_csv(".\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
+#md<-read_csv("/home/data/basin_stats_month_day_combo_2002_2024.csv")
+md<-read_csv(".\\hyetograph\\data\\basin_stats_month_day_combo_2002_2024.csv")
+
+# grab your most recent data written on your s3 in the dailystat
+
 
 # some AWS checks
-required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
+required <- c("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION")
 missing  <- required[Sys.getenv(required) == ""]
 if (length(missing)) {
   stop("Missing env vars on Connect: ", paste(missing, collapse = ", "))
@@ -461,8 +464,9 @@ fp <- (guide_area() +
     plot.margin          = margin(rep(10, 4))
   )
 
-combo_hyet <- "/home/data/combo_hyet.png"
-#combo_hyet <- ".//hyetograph//output//combo_hyet.png"
+
+#combo_hyet <- "hyetograph/output/combo_hyet.png"
+combo_hyet <- ".//hyetograph//output//combo_hyet.png"
 ggsave(combo_hyet, fp, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
 
