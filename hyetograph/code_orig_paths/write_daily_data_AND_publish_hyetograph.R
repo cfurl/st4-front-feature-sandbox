@@ -57,7 +57,8 @@ ytd_edwards_stats <- stg4_edwards_daily_stats_24hr |>
   mutate(cumulative_basin_avg_in = cumsum(replace(daily_basin_avg_in,is.na(daily_basin_avg_in),0))) |>
   mutate(month=month(date), day=day(date))|>
   ungroup()|>
-  select(basin, date, month, day, cumulative_basin_avg_in)
+  select(basin, date, month, day, cumulative_basin_avg_in)|>
+  distinct(basin, date, .keep_all = TRUE) 
 
 
 # join your daily write ytd edwards stats with the hard-wired 2002-2024 statistics:
@@ -469,7 +470,7 @@ fp <- (guide_area() +
 combo_hyet <- ".//hyetograph//output//combo_hyet.png"
 ggsave(combo_hyet, fp, device = ragg::agg_png, width = 3840, height = 2160, units = "px")
 
-
+region <- ("us-east-2")
 # Write your .png to the historical repository "stg4-edwards-daily-maps"
 # local file you just wrote with ggsave()
 local_png_hyet <- combo_hyet
@@ -487,6 +488,7 @@ ok_hyet <- put_object(
   file    = local_png_hyet,
   object  = s3_key_hyet,
   bucket  = "stg4-edwards-daily-maps",
+  region   = region,
   headers = list(`Content-Type` = "image/png"),
   multipart = TRUE
 )
@@ -497,7 +499,7 @@ if (!isTRUE(ok_hyet)) stop("Upload failed: ", local_png_hyet)
 ###### Upload maps to 'latest' area publick bucket
 
 latest_bucket <- "stg4-edwards-latest"
-region <- ("us-east-2")
+
 
 ok_latest_hyet <- put_object(
   file     = local_png_hyet,
