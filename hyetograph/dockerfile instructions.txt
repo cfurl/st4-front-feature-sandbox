@@ -1,10 +1,12 @@
+# build image
+
 docker image build --tag makehyet .
 
 # 4. put in on the registry
 
 docker login --username cfurl
-docker image tag daily_stat_update cfurl/stg4_24hr_daily_stat_update:v1
-docker image push cfurl/stg4_24hr_daily_stat_update:v1
+docker image tag makehyet cfurl/stg4_24hr_daily_make_hyet:v1
+docker image push cfurl/stg4_24hr_daily_make_hyet:v1
 # you should now be able to see it online: https://hub.docker.com/r/cfurl/
 
 
@@ -14,8 +16,6 @@ services:
   scraper:
     image: cfurl/stg4_24hr_scraper:v1
     container_name: scrape24
-    #networks:
-     # - some_name
     volumes:
       - st4_data:/home/data
 
@@ -31,7 +31,7 @@ services:
       - st4_data:/opt/    
       
   parqs3:
-    image: cfurl/stg4_24hr_parq_s3:v1
+    image: cfurl/stg4_24hr_parq_s3:v2
     container_name: parqs3
     depends_on:
       wgrib2:
@@ -40,7 +40,7 @@ services:
       - st4_data:/home/data
     env_file:
       - .env
-      
+  
   dailystat:
     image: cfurl/stg4_24hr_daily_stat_update:v1
     container_name: dailystat
@@ -50,6 +50,27 @@ services:
     env_file:
       - .env
 
-        
+  makemap:
+    image: cfurl/stg4_24hr_daily_make_map:v1
+    container_name: makemap
+    depends_on:
+      dailystat:
+        condition: service_completed_successfully
+    volumes:
+      - st4_data:/home/data
+    env_file:
+      - .env
+      
+  makehyet:
+    image: cfurl/stg4_24hr_daily_make_hyet:v1
+    container_name: makehyet
+    depends_on:
+      makemap:
+        condition: service_completed_successfully
+    volumes:
+      - st4_data:/home/data
+    env_file:
+      - .env    
+
 volumes:
   st4_data:
